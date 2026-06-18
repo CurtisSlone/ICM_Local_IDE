@@ -216,6 +216,43 @@ icm selftest                    check the deterministic core (oracle/json/tsv/pa
 
 `OLLAMA_URL` overrides the instance's configured `ollama_url`.
 
+## Configuration
+
+Configuration is **per-instance**: each instance folder has its own `icm.config.json`. There is no
+global host config - point the host at a different folder and it uses that folder's settings. The
+settings that matter most:
+
+**Which model(s) to use.** The host uses named model "seats":
+
+```json
+"models": {
+  "generate": "qwen3-coder:latest",
+  "dispatch": "qwen3-coder:latest",
+  "embed":    "nomic-embed-text"
+}
+```
+
+- `generate` - writes the actual text (grounded answers, freeform `make`, proposed rows).
+- `dispatch` - the small classify/route call; omit it to reuse the `generate` model.
+- `embed` - optional, reserved for embedding-based routing.
+
+Use any models you have pulled in Ollama (`ollama pull <name>`, list with `ollama list`). The flat
+fields `model` / `embed_model` are also accepted as a fallback.
+
+**The Ollama connection.** Defaults to `http://localhost:11434`. Set it per instance:
+
+```json
+"ollama_url": "http://localhost:11434"
+```
+
+or override it for a single run with the `OLLAMA_URL` environment variable (the env var wins over the
+file). Point this at a different port or a remote Ollama as needed.
+
+**Other settings.** `name` and `domain` (shown by `icm open` and woven into prompts) and `tools` (the
+capabilities the instance exposes - see [Tools](#tools)).
+
+After editing, run `icm open <dir>` to see the resolved model seats and Ollama URL it will use.
+
 ## Build your own instance (the contract)
 
 An instance is just a folder. Copy `example-icm/` and edit the pieces you need - the host runs

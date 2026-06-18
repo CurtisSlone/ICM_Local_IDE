@@ -113,6 +113,25 @@ An instance directory may provide (all optional except as noted; see `example-ic
 - `tools/*` - scripts the host runs (declared in config with a `command` argv or a `script`).
 - `flows/*.json` - authored workflows.
 
+## Changing configuration
+
+Config is **per-instance** in `<instance>/icm.config.json`; there is no global host config. The
+fields that matter, and how to change them:
+
+- **Model(s).** `models.generate` (writes text), `models.dispatch` (the classify/route call; falls
+  back to `generate` if omitted), `models.embed` (optional). Set them to any model present in Ollama
+  (`ollama list` / `ollama pull <name>`). Flat `model` / `embed_model` / `dispatch_model` fields are
+  accepted as fallbacks. Resolution: `Config.ResolveModels` in `src/Model/Config.cs` (nested wins,
+  then flat, then defaults `qwen3-coder:latest` / none).
+- **Ollama connection.** `ollama_url` (default `http://localhost:11434`). The `OLLAMA_URL` env var
+  overrides the file at runtime - env wins. Resolution: `EffectiveUrl` in `src/Cli/Program.cs` (and
+  the GUI reads the env the same way).
+- **Other.** `name`, `domain` (shown by `open`, woven into prompts), `tools [...]` (see below).
+
+To change a model or endpoint for an instance, edit that instance's `icm.config.json` and re-run.
+Verify with `icm open <dir>` - it prints the resolved `generate` / `dispatch` / `embed` seats and the
+effective Ollama URL. No host rebuild is needed for config changes (config is data, read at load).
+
 ## Adding capabilities
 
 - A new **tool**: add an entry to the instance's `icm.config.json` (`command`/`script` + optional
