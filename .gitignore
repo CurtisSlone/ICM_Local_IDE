@@ -1,0 +1,13 @@
+# Pre-built binaries (icm.exe, icm-gui.exe) ARE committed on purpose so downloaders can run the
+# host immediately via the launchers - do NOT ignore *.exe here.
+
+# Runtime / dev cruft
+icm-gui.error.log
+*.pdb
+_*
+
+# OS / editor
+Thumbs.db
+.DS_Store
+*.user
+.vs/

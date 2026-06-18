@@ -1,0 +1,9 @@
+{
+  "name": "answer",
+  "description": "Grounded KB answer: route to an entry, read it, answer only from that text.",
+  "nodes": [
+    { "id": "route",  "kind": "route",  "inputs": ["request"],            "outputs": ["entry_id"] },
+    { "id": "read",   "kind": "read",   "inputs": ["entry_id"],           "outputs": ["context"] },
+    { "id": "answer", "kind": "answer", "inputs": ["request", "context"], "outputs": ["answer"] }
+  ]
+}

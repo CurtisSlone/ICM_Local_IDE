@@ -1,0 +1,25 @@
+{
+  "name": "example-icm",
+  "description": "The routing index. The dispatcher shows the model only these one-line summaries; it routes to one entry, reads it, and answers from that text.",
+  "domain": "a tiny task tracker (example instance for the ICM host)",
+  "entries": [
+    {
+      "id": "tasks-overview",
+      "title": "Tasks overview",
+      "path": "kb/tasks-overview.md",
+      "summary": "What the tasks table is, its columns (id, title, status, priority), and how a row is shaped. The shape the oracle enforces."
+    },
+    {
+      "id": "statuses-and-priorities",
+      "title": "Statuses and priorities",
+      "path": "kb/statuses-and-priorities.md",
+      "summary": "The allowed status values (todo, doing, done) and the priority scale (1 highest to 5 lowest). The enum and range rules."
+    },
+    {
+      "id": "extending-this-icm",
+      "title": "Extending this ICM",
+      "path": "kb/extending-this-icm.md",
+      "summary": "How to add KB entries, schemas, tools, and flows to turn this example into your own ICM. Where each piece lives."
+    }
+  ]
+}

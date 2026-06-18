@@ -1,0 +1,10 @@
+{
+  "name": "tasks",
+  "key": "id",
+  "columns": [
+    { "name": "id", "type": "int", "required": true, "min": 1 },
+    { "name": "title", "type": "string", "required": true },
+    { "name": "status", "type": "enum", "values": ["todo", "doing", "done"] },
+    { "name": "priority", "type": "int", "min": 1, "max": 5 }
+  ]
+}

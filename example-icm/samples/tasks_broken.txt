@@ -1,0 +1,5 @@
+id	title	status	priority
+1	Missing a column	todo
+xyz	Bad id (not an integer)	doing	2
+3	Bad status value	wip	2
+4	Priority out of range	done	9
