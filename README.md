@@ -1,70 +1,86 @@
-# win_icm_code - the ICM host (C#)
+# icm - a local-model ICM host with a deterministic oracle
 
-A C# port of the Rust ICM host (`../ollama_ICM_code`). Same job: "open a directory and land in
-the ICM." It loads an ICM instance and runs it - a chat-style dispatcher for a human operator,
-an MCP server for a strong orchestrator (Claude), and the deterministic oracle both rely on. It
-ships as two Windows-native executables over one shared core:
+`icm` runs an **ICM**: a small, local language model used as a bounded *proposer*, paired with a
+deterministic *oracle* that decides whether each proposal is acceptable. You point the host at a
+folder (an "instance") that holds a knowledge base, table schemas, scripts, and workflows, and it
+gives you a chat console, a small editor GUI, and an [MCP](https://modelcontextprotocol.io) server
+over the same instance.
 
-- `icm.exe` - the console CLI (open / chat / mcp / validate / gen).
-- `icm-gui.exe` - a "VSCode lite" WinForms front end: a workspace file tree (add/delete/
-  rename/read/edit, confined to the opened root), a text editor, and a chat panel that drives
-  the same dispatcher the console uses.
+It is Windows-native and dependency-light: it builds with the C# compiler that ships in the box with
+the .NET Framework (no SDK, no NuGet, no MSBuild) and talks to a local [Ollama](https://ollama.com)
+over plain HTTP.
 
-This port targets the C# compiler that ships with Windows. No SDK, no NuGet, no MSBuild: it
-builds with the in-box .NET Framework `csc.exe` and runs on the .NET Framework 4.x that is
-already present on Windows 10/11. Non-default references: `System.Web.Extensions.dll` (the
-`JavaScriptSerializer` JSON layer) for both; `System.Windows.Forms.dll` + `System.Drawing.dll`
-(from the GAC) for the GUI.
+## The idea: propose, then verify
 
-## Build
+A small local model is unreliable when you ask it to *decide* things or to drive an open-ended
+tool-calling loop. It is reliable when each call is narrow and its output is checked. So this host
+splits every task into three roles with one trust line:
+
+| Role | Trusted to | Not trusted to |
+| --- | --- | --- |
+| **Model** (the proposer) | pick from an enum, draft text, write one table row | be right on its own; choose what runs next |
+| **Code** (the glue) | read files, run tools, sequence steps | (it has no judgment to misuse) |
+| **Oracle** (the decider) | accept or reject a proposal, deterministically | have opinions |
+
+The oracle here is a **schema-driven validator for tab-separated tables**: it checks column count
+(the classic "a tab got added or dropped" corruption), types, numeric ranges, and enum membership.
+Because the verdict is deterministic, a wrong proposal is *caught*, not trusted - and the model can
+be sent the exact errors and asked to try again, within a bound.
+
+Two guardrails keep this honest:
+
+- **The console is a dispatcher, not a chat.** Each turn is one constrained classify call
+  (`{intent, query}`); then code runs the chosen capability. The model never improvises a tool loop.
+- **Tools are declared; the model only fills arguments.** A tool's command is authored in the
+  instance, never invented by the model. *Which* tool runs is decided by an authored workflow or by a
+  capable orchestrator (e.g. Claude over MCP) - never by an open local-model loop.
+
+## What you get
+
+Two Windows executables built from one shared codebase:
+
+- **`icm.exe`** - a console CLI: open / chat / mcp / flow / validate / gen / selftest.
+- **`icm-gui.exe`** - a small "VSCode-lite" GUI: a workspace file tree (add / rename / delete / edit,
+  confined to the opened folder), a text editor with a line-number gutter and find/replace, and a
+  chat panel that drives the same engine as the console.
+
+Prebuilt binaries are included in this folder, so you can run it without building anything.
+
+## Quick start
+
+**Prerequisites:** Windows 10/11 (the .NET Framework 4.x it needs is already installed).
+[Ollama](https://ollama.com) running locally is required for the model-backed features (`chat`,
+`ask`, `propose`, `gen`); `validate`, `selftest`, and script tools need no model. By default the host
+talks to `http://localhost:11434` and uses `qwen3-coder:latest` (generation) and `nomic-embed-text`;
+change these per instance in `icm.config.json`, or override the URL with the `OLLAMA_URL` env var.
+
+From this folder:
 
 ```
-powershell -ExecutionPolicy Bypass -File build.ps1
+.\icm.cmd selftest                           # verify the deterministic core (no model needed)
+.\icm.cmd open example-icm                    # load + summarize the bundled example instance
+.\icm.cmd validate example-icm tasks          # run the oracle on a table -> PASS
+.\icm.cmd validate example-icm tasks_broken   # -> FAIL, prints the 4 planted faults (exit code 2)
+.\icm-gui.cmd example-icm                      # open the GUI on the example instance
+.\icm.cmd chat example-icm                     # operator console (needs Ollama)
 ```
 
-This calls `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe` directly with
-`-noconfig -langversion:5` (the in-box compiler is pre-Roslyn and caps at C# 5) and writes both
-`icm.exe` and `icm-gui.exe` next to the script. It globs `src\` recursively and partitions by
-folder: the `Cli\` folder (console `Main`) is excluded from the GUI build and the `Gui\` folder
-(WinForms + the GUI `Main`) from the console build, so each exe has exactly one entry point.
+> **Why `.cmd` and not `.exe`?** Run the `.cmd` launchers, not the bare `.exe` files. On Windows 11
+> with Smart App Control on, an unsigned downloaded `.exe` is blocked from running directly; the
+> launchers load the program in-memory inside the already-trusted PowerShell, which Smart App Control
+> allows. See [Running under Smart App Control](#running-under-smart-app-control). Tip: add this
+> folder to your `PATH` and you can run `icm ...` / `icm-gui .` from anywhere.
 
-## Running under Smart App Control
-
-This machine has Smart App Control (SAC) in enforce mode, which blocks running unsigned,
-locally-built `.exe` files directly. The fix needs no SAC-off and no signing: run the assembly's
-bytes **in-memory** inside the already-trusted `powershell.exe` (SAC gates PE files loaded from
-disk, not in-memory managed execution). The launchers do this for you:
+## The GUI
 
 ```
-.\icm.cmd validate example-icm tasks         # console CLI (in-memory)
-.\icm-gui.cmd example-icm                     # GUI (in-memory, STA host)
-.\icm-gui.cmd .                              # open the current folder
+.\icm-gui.cmd                  # opens empty; use File > Open Folder
+.\icm-gui.cmd example-icm      # open straight into an instance
 ```
 
-Add `win_icm_code` to your PATH and you can run `icm ...` / `icm-gui .` from any directory (like
-`code .`). Running `.\icm.exe` / `.\icm-gui.exe` directly will be blocked by SAC; use the `.cmd`
-launchers (or `run-cli.ps1` / `run-gui.ps1`).
-
-## GUI
-
-```
-.\icm-gui.cmd                       # open, then File > Open Folder
-.\icm-gui.cmd example-icm           # open straight into a workspace
-```
-
-Open any folder as the workspace; the tree, editor, and file operations are confined to that
-root. When the root contains `icm.config.json` the chat panel activates against that instance
-(needs Ollama). The chat is the three-layer design from the project DEVLOG: a non-load-bearing
-conversation layer (rewrites follow-ups into standalone requests), the constrained dispatcher
-(one `{intent, query}` classify call), then the ICM agent + oracle. The dispatcher's step trace
-streams into the chat log.
-
-Chat intents: `ask` (grounded KB answer), `validate` (oracle on a named table), `make` (freeform
-generate), and `propose` - the proposer/oracle edit loop: e.g. "add a level 6 paladin skill called
-Holy Bolt" makes the model propose a `skills.txt` row, the oracle validates it (column count,
-types, ranges, enums), bounded repair fixes failures, and on PASS the GUI offers to insert the
-validated row into `samples/<table>.txt` (you review and Ctrl+S). If it can't converge, it reports
-the oracle's diagnostics instead of shipping a bad row.
+Open any folder as a workspace; the tree, editor, and file operations are confined to that root. When
+the folder is an instance (it has an `icm.config.json`), the chat panel activates and the dispatcher's
+step trace streams into the log.
 
 ### Keyboard shortcuts
 
@@ -74,87 +90,117 @@ the oracle's diagnostics instead of shipping a bad row.
 | Ctrl+P | Quick Open (fuzzy file find) | Alt+Z | Toggle word wrap |
 | Ctrl+N | New file | Ctrl++ / Ctrl+- / Ctrl+0 | Editor zoom in / out / reset |
 | Ctrl+S | Save | F5 | Refresh tree |
-| Ctrl+W | Close file | F8 | Validate current file (oracle on editor buffer) |
+| Ctrl+W | Close file | F8 | Validate current file (oracle on the editor buffer) |
 | Ctrl+F / Ctrl+H | Find / Replace | Ctrl+Shift+E / Ctrl+L | Focus tree / chat |
 | Ctrl+Z / Ctrl+Y | Undo / redo (editor) | Esc | Close Find / Quick Open |
 
 File tree: `Del` delete, `F2` rename, `Enter` open. Chat input: `Enter` or `Ctrl+Enter` sends,
-`Shift+Enter` inserts a newline. Find: `Enter` finds next.
+`Shift+Enter` inserts a newline.
+
+## How the chat works
+
+The chat looks like a conversation but is a constrained router underneath. Each turn:
+
+1. **Conversation layer** (optional) - rewrites a follow-up like "now do the same for the other
+   table" into a standalone request. Non-load-bearing: a bad rewrite only costs a wrong intent.
+2. **Dispatcher** - one constrained call classifies the line into an intent and extracts the query.
+3. **Capability** - code runs the chosen capability deterministically:
+   - `ask` - answer a question, grounded in one knowledge-base entry.
+   - `validate` - run the oracle on a named table.
+   - `propose` - the proposer/oracle loop: the model proposes a new table row, the oracle validates
+     it, and on failure the exact errors are fed back for a bounded repair. On success the GUI offers
+     to insert the validated row into the table file (you review and save). If it can't converge, it
+     reports the oracle's verdict instead of writing a bad row.
+   - `make` - freeform generation that is not a table row.
 
 ## Commands
 
 ```
-icm open  <dir>                 load + summarize an ICM instance
+icm open  <dir>                 load + summarize an instance
 icm chat  <dir>                 operator console (dispatcher; needs Ollama)
-icm mcp   <dir>                 serve this ICM over MCP (stdio)
+icm mcp   <dir>                 serve the instance over MCP (stdio)
 icm flow  <dir> <name> [in...]  run an authored workflow (flows/<name>.json)
 icm validate <dir> <table>      run the oracle on schemas/<table>.json + samples/<table>.txt
-icm gen   <dir> <prompt...>     one raw generate call (smoke-test the model seat)
+icm gen   <dir> <prompt...>     one raw generate call (smoke-test the model)
 icm selftest                    check the deterministic core (oracle/json/tsv/paths; no model)
 ```
 
-`OLLAMA_URL` overrides the config's `ollama_url`.
+`OLLAMA_URL` overrides the instance's configured `ollama_url`.
 
-## Try it
+## Build your own ICM (the instance contract)
+
+An instance is just a folder. Copy `example-icm/` and edit the pieces you need - the host runs
+whatever it finds, and every piece is optional.
 
 ```
-.\icm.cmd open example-icm
-.\icm.cmd validate example-icm tasks                 # PASS
-.\icm.cmd validate example-icm tasks_broken          # FAIL (4 planted faults), exit code 2
-.\icm.cmd chat example-icm                           # needs Ollama on localhost:11434
+my-icm/
+  icm.config.json     name, domain, model seats, and the tools this instance exposes
+  manifest.json       the routing index: {id, title, path, summary} per knowledge-base entry
+  SYSTEM.md           operating rules injected into grounded answers
+  kb/*.md             knowledge-base entries (one topic per file) - the grounding for `ask`
+  schemas/<t>.json    a table schema: columns with type / required / min / max / enum values
+  samples/<t>.txt     tab-separated data for table <t> (first line is the header)
+  tools/*             scripts the host can run (declared in icm.config.json)
+  flows/*.json        authored workflows
 ```
 
-## Tools & MCP
+`icm.config.json` looks like:
 
-An instance declares runnable tools in `icm.config.json`. Each tool has a `kind` the host knows
-how to dispatch:
+```json
+{
+  "name": "my-icm",
+  "domain": "what this instance is about",
+  "models": { "generate": "qwen3-coder:latest", "dispatch": "qwen3-coder:latest", "embed": "nomic-embed-text" },
+  "ollama_url": "http://localhost:11434",
+  "tools": [
+    { "name": "ask",      "kind": "kb_answer", "description": "Answer from the knowledge base." },
+    { "name": "validate", "kind": "validate",  "description": "Validate a table against its schema." },
+    { "name": "propose",  "kind": "propose",   "description": "Propose a validated new row." }
+  ]
+}
+```
 
-- `validate` - run the oracle on a table (`{table, tsv?}`).
-- `kb_answer` - a grounded KB answer (`{question}`).
-- `propose` / `generate_verify` - the proposer/oracle row loop (`{table, request}`).
-- a **command/script tool** - any `kind` that declares a `command` (argv array) or a `script`
-  (`.ps1`). Example:
+A directory with no `icm.config.json` still opens (sensible defaults plus its knowledge base), so you
+can start with just a `manifest.json` and a `kb/` folder and grow from there.
+
+## Tools
+
+A tool lets the host run a script or command an instance provides. Declare it in `icm.config.json`
+with a `command` (an argv array) or a `script` (a `.ps1` file under `tools/`):
 
 ```json
 {
   "name": "table_stats", "kind": "command",
   "description": "Report row/column counts for a table.",
   "command": ["powershell","-NoProfile","-ExecutionPolicy","Bypass","-File","tools/table_stats.ps1","-Table","{table}"],
-  "inputSchema": { "type":"object", "properties": { "table": {"type":"string"} }, "required":["table"] },
+  "inputSchema": { "type": "object", "properties": { "table": { "type": "string" } }, "required": ["table"] },
   "timeout": 30
 }
 ```
 
-The host runs the command with the **instance root as the working directory** (so relative paths
-like `tools/...` and `samples/...` resolve), substitutes `{arg}` placeholders from the call's
-arguments, optionally pipes one argument to stdin (`"stdin":"argname"`), enforces `timeout`
-(seconds), and captures stdout/stderr/exit. Because the command is passed as an argv (not a shell
-string), there is no shell-injection surface.
-
-**The guardrail:** the command is authored by the instance; the model (or a flow) only fills the
-declared arguments. Tool *selection* is done by the strong orchestrator (Claude over MCP) or by an
-authored flow - never by an open local-model loop.
-
-`icm mcp <dir>` serves these over stdio JSON-RPC: `tools/list` advertises each tool (using its
-authored `inputSchema`), and `tools/call` dispatches by kind. Same server, two callers - Claude or
-the local dispatcher.
+The host runs the command with the **instance folder as the working directory** (so `tools/...` and
+`samples/...` resolve), substitutes `{arg}` placeholders from the call's arguments, optionally pipes
+one argument to standard input (`"stdin": "argname"`), enforces `timeout` (seconds), and captures
+stdout / stderr / exit code. The command is passed as an argv array (not a shell string), so there is
+no shell-injection surface. The instance author writes the command; the caller only fills the
+declared arguments.
 
 ## Flows (authored workflows)
 
-A flow is `flows/<name>.json`: an ordered list of nodes, each declaring the `inputs` it reads from a
-shared state blackboard and the `outputs` it writes. The flow is the orchestrator - the local model
+A flow (`flows/<name>.json`) is an ordered list of nodes over a shared state "blackboard"; each node
+declares the `inputs` it reads and the `outputs` it writes. The flow is the orchestrator - the model
 proposes inside nodes but never decides what runs next. Node kinds:
 
-- `route` request -> entry_id (constrained KB route)
-- `read` entry_id -> context (code reads the KB entry; no model)
-- `generate` templated prompt -> text (heavy seat; `prompt` with `{state}` substitution)
+- `route` request -> entry_id (constrained pick of a knowledge-base entry)
+- `read` entry_id -> context (code reads the entry; no model)
+- `generate` templated prompt -> text (`prompt` supports `{state}` substitution)
 - `answer` request + context -> answer (grounded with `SYSTEM.md`)
 - `propose` table + request -> row, ok (proposer -> oracle -> bounded repair)
 - `validate` table [+ tsv] -> verdict, ok (the oracle)
-- `tool` named tool + args -> output, ok (runs an instance command/script tool)
+- `tool` named tool + args -> output, ok (runs a command/script tool)
 
 ```json
-{ "name": "answer", "description": "Grounded KB answer",
+{ "name": "answer", "description": "Grounded knowledge-base answer",
   "nodes": [
     { "id": "route",  "kind": "route",  "inputs": ["request"],            "outputs": ["entry_id"] },
     { "id": "read",   "kind": "read",   "inputs": ["entry_id"],           "outputs": ["context"] },
@@ -162,70 +208,64 @@ proposes inside nodes but never decides what runs next. Node kinds:
   ] }
 ```
 
-Run a flow with `icm flow <dir> <name> [input...]`, or expose one as a tool (`{"kind":"flow","flow":"answer"}`)
-so Claude can call it over MCP. `example-icm/flows/` has `answer` (route->read->answer) and
-`stats` (a deterministic `tool` node calling `table_stats`, no model).
+Run it with `icm flow <dir> <name> [input...]`, or expose it as a tool (`{"kind": "flow", "flow":
+"answer"}`) so an MCP client can call it. `example-icm/flows/` has `answer` (route -> read -> answer)
+and `stats` (a deterministic `tool` node, no model).
 
-## Adapting to any ICM
+## Drive it from a frontier model over MCP
 
-The host opens any instance directory. Model seats are read from nested `models.{generate,dispatch,
-embed}`, falling back to the flat `model` / `embed_model` fields the Python ICMs use. A directory with
-no `icm.config.json` still opens (defaults + KB only). So an instance is just: `icm.config.json`
-(optional), `manifest.json` + `kb/` (grounding), `schemas/` + `samples/` (the oracle), `tools/`
-(scripts/commands), and `flows/` (workflows) - add the pieces you need.
+`icm mcp <dir>` serves the instance over stdio JSON-RPC. `tools/list` advertises the instance's tools
+(with their input schemas) and `tools/call` runs them - command/script tools, the oracle, grounded
+answers, the propose loop, and whole flows. This is the same engine the local console uses, exposed so
+a capable orchestrator can sequence the tools while the local model keeps filling the narrow,
+oracle-checked slots.
 
-## Source map (`src/`)
+## Running under Smart App Control
 
-Organized by layer (one flat `namespace Icm`; folders are for humans). `build.ps1` compiles the
-`Gui\` folder only into `icm-gui.exe` and the `Cli\` folder only into `icm.exe`; everything else is
-shared.
+Windows 11's Smart App Control blocks running unsigned, locally-built or freshly-downloaded `.exe`
+files directly. It does **not** block in-memory managed execution inside the already-trusted,
+Microsoft-signed PowerShell. The launchers in this folder use that: they read the program's bytes and
+run them in-process.
+
+- Use `icm.cmd` / `icm-gui.cmd` (or `run-cli.ps1` / `run-gui.ps1`). Running `icm.exe` / `icm-gui.exe`
+  directly may be blocked.
+- This is the user's own local program running on the user's own machine; Smart App Control still
+  guards everything else.
+
+## Build from source
 
 ```
-src/
-  Conventions.cs   the instance contract in one place: file/dir layout + intent/tool/node kind names
-  Json.cs          serde_json analogue: JavaScriptSerializer wrapper + navigation + Obj/Schema builders
-  Model/           pure data (no logic)
-    Config.cs        icm.config.json (model seats, tools, compat shim) + Tool (command/script helpers)
-    Manifest.cs      the routing index + Entry
-    TableSchema.cs   ColSpec / TableSchema / Problem (the oracle's data)
-    Flow.cs          Flow / FlowNode (the workflow data)
-    Results.cs       TurnResult / ValidateResult / ProposeResult / ToolRunResult
-  Runtime/         the engine
-    Instance.cs      a loaded ICM + sandboxed IO (path-escape guard) + path helpers + IcmError
-    Oracle.cs        the schema-driven TSV validator (the D2 "compiler")
-    Tsv.cs           shared CRLF-tolerant line/row splitting
-    ToolRunner.cs    runs declared command/script tools (argv quoting, stdin, timeout, capture)
-    Ollama.cs        the Ollama client + Cancel handle (see the deviation note below)
-    Dispatcher.cs    conversation rewrite -> constrained classify -> capability (ask/make/validate/propose)
-    FlowEngine.cs    runs an authored Flow over a state blackboard
-  Server/  Mcp.cs   stdio JSON-RPC: tools/list + tools/call dispatched by kind
-  Cli/             the console exe (Main)
-    Program.cs       command parsing
-    ConsoleChat.cs   the REPL over a Dispatcher
-    SelfTest.cs      `icm selftest` - asserts the deterministic core
-  Gui/             the WinForms exe (Main) - WinForms-only code
-    Gui.cs           the "VSCode lite" front end (window, tree, editor, chat panel, dialogs, theme)
-    Native.cs        Win32 interop: explorer tree glyphs, system icons, modern folder picker
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-Launchers `run-cli.ps1` / `run-gui.ps1` + `icm.cmd` / `icm-gui.cmd` run the exes in-memory (see the
-Smart App Control section).
+This calls the in-box .NET Framework C# compiler (`csc.exe`, pre-Roslyn, so the code targets C# 5)
+with no SDK, NuGet, or MSBuild, and writes `icm.exe` and `icm-gui.exe`. It globs `src\` recursively
+and partitions by folder so each executable has exactly one entry point: the `Cli\` folder (console)
+is excluded from the GUI build and the `Gui\` folder (WinForms) from the console build. Non-default
+references: `System.Web.Extensions.dll` (JSON) for both, and `System.Windows.Forms.dll` +
+`System.Drawing.dll` for the GUI. Verify a build with `.\icm.cmd selftest`.
 
-## The one deliberate deviation from the Rust version
+## Project layout (`src/`)
 
-The Rust client hand-rolls HTTP over a raw `TcpStream` (manual request, read-to-EOF, manual
-de-chunk) specifically to avoid pulling in an HTTP crate. This port uses `System.Net.HttpWebRequest`
-instead. That is the same spirit ("use the standard library, no extra dependency"): `HttpWebRequest`
-lives in `System.dll`, which is always present. It also handles `Transfer-Encoding: chunked` and
-response framing for us, removing the manual de-chunk loop. The DEVLOG read-timeout lesson is
-preserved via `Timeout` + `ReadWriteTimeout`, and the grammar-constrained `format` field is
-preserved as-is.
+One flat `namespace Icm`; folders are organizational.
 
-## Parity and skeleton boundaries
+```
+Conventions.cs   the instance contract in one place: file/dir names + intent/tool/node kind constants
+Json.cs          JSON parse/serialize + navigation + small object/schema builders
+Model/           pure data: Config, Manifest, TableSchema, Flow, Results
+Runtime/         the engine: Instance (sandboxed IO), Oracle, Tsv, ToolRunner, Ollama, Dispatcher, FlowEngine
+Server/Mcp.cs    the MCP server (tools/list + tools/call)
+Cli/             the console executable: Program, ConsoleChat, SelfTest
+Gui/             the GUI executable (WinForms): Gui, Native
+```
 
-Behaviour matches the Rust host: `open`, oracle PASS/FAIL, live `gen`, live `chat` dispatcher,
-and the MCP handshake + `tools/list` are all verified. The same skeleton edges remain (they are
-ported faithfully, not finished here): `tools/call` reports "not implemented yet"; cross-table
-ref checks exist (`Oracle.IdSet` + the refs map) but `validate` runs single-table and passes
-`null`; the config-compat shim for flat Python `model`/`embed_model` fields is not added; output
-prints after completion (no token streaming).
+## Status
+
+Working: instance loading, the oracle (validate / propose with bounded repair), grounded `ask`,
+script/command tools, authored flows, the chat dispatcher, the GUI, and the MCP server. Not yet
+implemented: embedding-based routing for large knowledge bases, cross-table reference checks in the
+oracle, and token streaming (turns print on completion).
+
+## License
+
+No license file is included yet - add one before distributing.
