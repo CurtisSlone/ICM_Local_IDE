@@ -1,4 +1,4 @@
-# icm - a local-model host for Interpretable Context Methodology (ICM)
+# A local-model host for Interpretable Context Methodology (ICM)
 
 `icm` runs **ICM** instances on a small, local language model, adding a deterministic *oracle* that
 checks the model's output. You point the host at a folder (an "instance") - a knowledge base, table
@@ -50,6 +50,62 @@ Two guardrails keep this honest:
 - **Tools are declared; the model only fills arguments.** A tool's command is authored in the
   instance, never invented by the model. *Which* tool runs is decided by an authored workflow or by a
   capable orchestrator (e.g. Claude over MCP) - never by an open local-model loop.
+
+## Local-model adaptation: how this differs from ICM
+
+ICM as published assumes a *capable* orchestrating agent (the paper's examples use Claude) that
+**roams the folder structure itself** - it reads the routing files, decides which entries and which
+stage to load, produces each stage's output, and a human reviews the plain-file result. A small
+**local** model simply *can't do that*: behind a generate API it has no file access and no tool use
+at all - it only turns a prompt into text. (And even within a single call, it can't reliably be
+trusted to decide what runs next or to format itself.) So this host keeps ICM's "structure is the
+architecture" idea but moves the orchestration **out of the model and into deterministic code**, and
+adds a machine check the frontier setup did not need.
+
+| Concern | ICM (frontier agent) | This host (local model) |
+| --- | --- | --- |
+| Navigating the folders | the agent reads them and picks what to load | code crawls: a constrained **enum pick** chooses the entry, then code reads and **injects** the scoped context |
+| Sequencing | the agent decides what runs next across numbered stages | a deterministic **dispatcher** (one constrained classify) and authored **flows** sequence the work |
+| Checking output | a human reviews each stage's file | a deterministic **oracle** gates table output, with bounded repair (the human still edits) |
+| Model output shape | trusted to format itself | **grammar/enum-constrained**, so only a valid shape can be emitted |
+| Tools | the agent calls local scripts / MCP as it sees fit | tools are **declared**; the model only fills arguments; *which* tool runs is a flow's or a frontier orchestrator's call |
+| Orchestrator seat | the capable agent, always | you direct it from the chat by default; the **same instance is exposed over MCP**, so a frontier model (or any other MCP client) can take the seat when you want |
+
+The key move is the **injection**. Rather than letting the model wander the filesystem (safe for a
+frontier model, not for a local one), the host does the layered context loading itself and injects
+the precisely-scoped context into each constrained call. The model never crawls; code crawls *for*
+it and hands it one narrow, checkable decision at a time. The same machinery is what the built-in MCP
+server exposes - one engine, two callers: the local dispatcher, or a frontier model over MCP.
+
+```mermaid
+flowchart TD
+    you([You]) -->|natural language| conv["Conversation layer<br/>rewrites follow-ups (non-load-bearing)"]
+    conv --> disp["Dispatcher<br/>one constrained classify call -> (intent, query)"]
+
+    disp -->|ask| crawl["Crawl the ICM (code)<br/>route -> read KB entry -> scope context"]
+    disp -->|propose / validate| build["Build table context (code)<br/>schema + header + examples"]
+
+    crawl --> mAsk["Local model<br/>pick entry (enum), draft grounded answer"]
+    build --> mRow["Local model<br/>propose one table row"]
+
+    mAsk -->|grounded answer| you
+    mRow --> oracle{{"Oracle<br/>deterministic schema check"}}
+    oracle -->|PASS| you
+    oracle -->|"FAIL: feed errors back (bounded repair)"| mRow
+
+    disp -. same engine exposed over MCP .-> claude([Frontier model, e.g. Claude<br/>optional orchestrator])
+
+    classDef codeNode fill:#e8f0fe,stroke:#4285f4,color:#111;
+    classDef modelNode fill:#fef7e0,stroke:#f9ab00,color:#111;
+    classDef oracleNode fill:#e6f4ea,stroke:#34a853,color:#111;
+    class conv,disp,crawl,build codeNode;
+    class mAsk,mRow modelNode;
+    class oracle oracleNode;
+```
+
+The blue nodes are deterministic code (the orchestrator), the amber nodes are the only points the
+local model is called (each a single constrained proposal), and the green node is the oracle that
+decides. Code does the crawling and the sequencing; the model only ever proposes.
 
 ## What you get
 
@@ -128,6 +184,23 @@ The chat looks like a conversation but is a constrained router underneath. Each 
      to insert the validated row into the table file (you review and save). If it can't converge, it
      reports the oracle's verdict instead of writing a bad row.
    - `make` - freeform generation that is not a table row.
+
+### Model seats, and yes - it still generates plain text
+
+A turn uses up to two model "seats", set per instance in `icm.config.json`:
+
+- the **dispatch** seat - a small model that makes the one constrained classify/route call;
+- the **generate** seat - the model that actually writes text: the grounded `ask` answer, the
+  freeform `make` output, and the proposed table row.
+
+They can be the same model (the example uses one for both) or two different models - a tiny model for
+dispatch and a larger one for generation, for instance.
+
+And yes, the local model still does ordinary generative text. `make` in the chat (and `icm gen` on
+the CLI) call the **generate** seat directly with **no oracle and no schema constraint** - you get
+plain model output. The oracle and the grammar constraints apply only to the structured capabilities
+(`propose` / `validate`); they never sit between you and free-form generation. The dispatch seat only
+ever does the routing - it is the generate seat that produces the prose.
 
 ## Commands
 
@@ -284,4 +357,5 @@ oracle, and token streaming (turns print on completion).
 
 ## License
 
-No license file is included yet - add one before distributing.
+MIT - see [LICENSE](LICENSE). The Interpretable Context Methodology it builds on is also
+MIT-licensed by Jake Van Clief and David McDermott.
