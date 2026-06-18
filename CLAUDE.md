@@ -6,9 +6,8 @@ details. This is a from-scratch C# reimplementation of the Rust ICM host that li
 
 ## What this is
 
-A generic **ICM runtime**: a host that opens an instance directory and runs it. "ICM" = a local
-model used as a bounded PROPOSER plus a deterministic ORACLE that decides. It ships as two
-Windows-native executables over one shared codebase:
+A host that opens an instance directory and runs it, two Windows-native executables over one shared
+codebase:
 
 - `icm.exe` - the console CLI (open / chat / mcp / flow / validate / gen / selftest).
 - `icm-gui.exe` - a "VSCode lite" WinForms front end (file tree + editor + chat panel).
@@ -16,6 +15,16 @@ Windows-native executables over one shared codebase:
 An **instance** (e.g. `example-icm/`) is pure data the host loads: a KB, table schemas, scripts
 (tools), and authored workflows (flows). The host is domain-agnostic; all domain content lives in
 the instance.
+
+**ICM = Interpretable Context Methodology** ("Folder Structure as Agent Architecture"), by Jake Van
+Clief & David McDermott (University of Edinburgh / Eduba; MIT; arXiv:2603.16021; repo
+RinDig/Interpretable-Context-Methodology-ICM). ICM replaces framework-level multi-agent orchestration
+with filesystem structure: folders are stages, plain markdown carries the prompts/context for one
+orchestrating agent, local scripts do the non-AI work, and every stage output is a plain file a human
+can edit before the next stage runs. Do NOT describe ICM as "a proposer plus an oracle" - that is
+THIS project's adaptation, not ICM itself. This project applies ICM to a LOCAL model and ADDS a
+deterministic oracle as the reliability mechanism (the local model proposes; the oracle decides).
+Spelling is "Interpretable" (per the paper), not "Interpreted".
 
 ## The core thesis (do not lose this)
 

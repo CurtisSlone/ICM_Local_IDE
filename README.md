@@ -1,14 +1,30 @@
-# icm - a local-model ICM host with a deterministic oracle
+# icm - a local-model host for Interpretable Context Methodology (ICM)
 
-`icm` runs an **ICM**: a small, local language model used as a bounded *proposer*, paired with a
-deterministic *oracle* that decides whether each proposal is acceptable. You point the host at a
-folder (an "instance") that holds a knowledge base, table schemas, scripts, and workflows, and it
-gives you a chat console, a small editor GUI, and an [MCP](https://modelcontextprotocol.io) server
-over the same instance.
+`icm` runs **ICM** instances on a small, local language model, adding a deterministic *oracle* that
+checks the model's output. You point the host at a folder (an "instance") - a knowledge base, table
+schemas, scripts, and workflows - and it gives you a chat console, a small editor GUI, and an
+[MCP](https://modelcontextprotocol.io) server over that instance.
 
 It is Windows-native and dependency-light: it builds with the C# compiler that ships in the box with
 the .NET Framework (no SDK, no NuGet, no MSBuild) and talks to a local [Ollama](https://ollama.com)
 over plain HTTP.
+
+## What is ICM?
+
+**Interpretable Context Methodology (ICM)** is a methodology by Jake Van Clief and David McDermott
+(University of Edinburgh / Eduba; MIT-licensed;
+[paper](https://arxiv.org/abs/2603.16021),
+[repo](https://github.com/RinDig/Interpretable-Context-Methodology-ICM)) that replaces
+framework-level multi-agent orchestration with **filesystem structure**: folders are stages, plain
+markdown files carry the prompts and context for a single orchestrating agent, and local scripts do
+the mechanical work that needs no AI. Every stage's output is a plain file a human can read and edit
+before the next stage runs, so the whole workflow stays inspectable and editable with a text editor.
+The folder structure does what a framework would otherwise do in code: sequencing, context scoping,
+and state.
+
+This project applies those ideas to a **local** model and adds one piece the original does not need:
+a deterministic **oracle**. A small local model is an unreliable decider, so here it never decides -
+it *proposes*, and a deterministic check *accepts or rejects* each proposal.
 
 ## The idea: propose, then verify
 
@@ -127,7 +143,7 @@ icm selftest                    check the deterministic core (oracle/json/tsv/pa
 
 `OLLAMA_URL` overrides the instance's configured `ollama_url`.
 
-## Build your own ICM (the instance contract)
+## Build your own instance (the contract)
 
 An instance is just a folder. Copy `example-icm/` and edit the pieces you need - the host runs
 whatever it finds, and every piece is optional.
