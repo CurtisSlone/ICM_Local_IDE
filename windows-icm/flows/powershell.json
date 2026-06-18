@@ -1,0 +1,14 @@
+{
+  "name": "powershell",
+  "description": "Generate PowerShell 5.1 grounded in the KB, parse-check it, and repair until it parses.",
+  "nodes": [
+    { "id": "route", "kind": "route", "inputs": ["request"],  "outputs": ["entry_id"] },
+    { "id": "read",  "kind": "read",  "inputs": ["entry_id"], "outputs": ["context"] },
+    { "id": "build", "kind": "loop", "maxIterations": 4, "until": "ok", "outputs": ["code"],
+      "body": [
+        { "id": "gen", "kind": "generate", "outputs": ["code"],
+          "prompt": "Write Windows PowerShell 5.1 (NOT pwsh 7). FORBIDDEN: ternary a?b:c, null-coalescing ?? / ??=, null-conditional ?., pipeline chain operators && / ||, ForEach-Object -Parallel. Use if/else and ';' + if ($?) instead. Ground your script in this reference:\n\n--- REFERENCE ---\n{context}\n--- END ---\n\nTask: {request}\n\nIf the parser reported errors on the previous attempt, fix exactly those:\n{output}\n\nReturn ONE complete PowerShell script and nothing else (no prose, no fences)." },
+        { "id": "check", "kind": "tool", "tool": "ps_parse", "args": { "code": "{code}" }, "outputs": ["output"] }
+      ] }
+  ]
+}

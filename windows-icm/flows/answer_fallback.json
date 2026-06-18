@@ -1,0 +1,15 @@
+{
+  "name": "answer_fallback",
+  "description": "Tier-2 grounded answer. Route to a reference entry and read it; if nothing in the KB matched (context is empty), fall back to a hybrid search over the dotnet refdocs corpus; then answer from whatever context was found. Demonstrates the `branch` and `search` primitives.",
+  "nodes": [
+    { "id": "route",  "kind": "route",  "inputs": ["request"],            "outputs": ["entry_id"] },
+    { "id": "read",   "kind": "read",   "inputs": ["entry_id"],           "outputs": ["context"] },
+    {
+      "id": "fallback", "kind": "branch", "when": "context", "test": "empty",
+      "then": [
+        { "id": "search", "kind": "search", "corpus": "dotnet", "inputs": ["request"], "outputs": ["context"], "k": 5 }
+      ]
+    },
+    { "id": "answer", "kind": "answer", "inputs": ["request", "context"], "outputs": ["answer"] }
+  ]
+}

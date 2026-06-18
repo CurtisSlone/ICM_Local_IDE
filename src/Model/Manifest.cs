@@ -14,6 +14,9 @@ namespace Icm
         public string Title = "";
         public string Path = "";
         public string Summary = "";
+        public string DocType = "";
+        public string Group = "";   // sub-folder under the routable layer, e.g. "dotnet" or "creational"
+        public List<string> Keywords = new List<string>();
     }
 
     internal class Manifest
@@ -45,6 +48,9 @@ namespace Icm
                 entry.Title = Json.GetStringOr(eo, "title", "");
                 entry.Path = Json.GetStringOr(eo, "path", "");
                 entry.Summary = Json.GetStringOr(eo, "summary", "");
+                entry.DocType = Json.GetStringOr(eo, "doc_type", "");
+                entry.Group = Json.GetStringOr(eo, "group", "");
+                foreach (object kw in Json.GetArr(eo, "keywords")) if (kw != null) entry.Keywords.Add(kw.ToString());
                 m.Entries.Add(entry);
             }
             return m;

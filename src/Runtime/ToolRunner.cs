@@ -56,6 +56,9 @@ namespace Icm
                     var et = new Thread(delegate () { try { se.Append(p.StandardError.ReadToEnd()); } catch { } }); et.IsBackground = true; et.Start();
                     try
                     {
+                        // NOTE: Process.StandardInput's writer prepends a UTF-8 BOM preamble that the
+                        // child sees as a leading character. Tools that read stdin should strip a
+                        // leading U+FEFF (see windows-icm/tools/*.ps1). Kept simple here on purpose.
                         if (stdinKey != null && args.ContainsKey(stdinKey)) p.StandardInput.Write(Str(args[stdinKey]));
                         p.StandardInput.Close();
                     }

@@ -1,7 +1,0 @@
-{
-  "name": "stats",
-  "description": "Deterministic flow: run the table_stats tool on the tasks table (no model).",
-  "nodes": [
-    { "id": "stats", "kind": "tool", "tool": "table_stats", "args": { "table": "tasks" }, "outputs": ["output"] }
-  ]
-}

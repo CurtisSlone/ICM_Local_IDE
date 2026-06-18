@@ -13,6 +13,9 @@ namespace Icm
         public string Kind = "";
         public List<string> Inputs = new List<string>();
         public List<string> Outputs = new List<string>();
+        public List<FlowNode> Body = new List<FlowNode>(); // child nodes, for `loop`
+        public List<FlowNode> Then = new List<FlowNode>(); // child nodes taken when a `branch` condition holds
+        public List<FlowNode> Else = new List<FlowNode>(); // child nodes taken when it does not
         public Dictionary<string, object> Extra = new Dictionary<string, object>();
     }
 
@@ -38,18 +41,36 @@ namespace Icm
             foreach (object o in Json.GetArr(root, "nodes"))
             {
                 var no = o as Dictionary<string, object>;
-                if (no == null) continue;
-                var n = new FlowNode();
-                n.Id = Json.GetStringOr(no, "id", "");
-                n.Kind = Json.GetStringOr(no, "kind", "");
-                foreach (object i in Json.GetArr(no, "inputs")) if (i != null) n.Inputs.Add(i.ToString());
-                foreach (object ot in Json.GetArr(no, "outputs")) if (ot != null) n.Outputs.Add(ot.ToString());
-                foreach (var kv in no)
-                    if (kv.Key != "id" && kv.Key != "kind" && kv.Key != "inputs" && kv.Key != "outputs")
-                        n.Extra[kv.Key] = kv.Value;
-                f.Nodes.Add(n);
+                if (no != null) f.Nodes.Add(ParseNode(no));
             }
             return f;
+        }
+
+        // Parse one node, recursing into a `body` array (for `loop` nodes).
+        private static FlowNode ParseNode(Dictionary<string, object> no)
+        {
+            var n = new FlowNode();
+            n.Id = Json.GetStringOr(no, "id", "");
+            n.Kind = Json.GetStringOr(no, "kind", "");
+            foreach (object i in Json.GetArr(no, "inputs")) if (i != null) n.Inputs.Add(i.ToString());
+            foreach (object ot in Json.GetArr(no, "outputs")) if (ot != null) n.Outputs.Add(ot.ToString());
+            ParseChildren(no, "body", n.Body);
+            ParseChildren(no, "then", n.Then);
+            ParseChildren(no, "else", n.Else);
+            foreach (var kv in no)
+                if (kv.Key != "id" && kv.Key != "kind" && kv.Key != "inputs" && kv.Key != "outputs"
+                    && kv.Key != "body" && kv.Key != "then" && kv.Key != "else")
+                    n.Extra[kv.Key] = kv.Value;
+            return n;
+        }
+
+        private static void ParseChildren(Dictionary<string, object> no, string key, List<FlowNode> into)
+        {
+            foreach (object b in Json.GetArr(no, key))
+            {
+                var bo = b as Dictionary<string, object>;
+                if (bo != null) into.Add(ParseNode(bo));
+            }
         }
     }
 }

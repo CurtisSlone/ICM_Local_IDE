@@ -1,5 +1,0 @@
-id	title	status	priority
-1	Set up the repository	done	2
-2	Write the getting-started docs	doing	1
-3	Add a second example table	todo	3
-4	Record a short demo	todo	5

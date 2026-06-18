@@ -159,5 +159,28 @@ namespace Icm
             }
             return names;
         }
+
+        // One /api/embed call: returns the embedding vector for `text` (the embedder seat).
+        public static double[] Embed(string url, string model, string text, Cancel cancel = null)
+        {
+            var body = new Dictionary<string, object>();
+            body["model"] = model;
+            body["input"] = text;
+            string raw = Send(url, "POST", "/api/embed", Json.Serialize(body), 30000, cancel);
+            Dictionary<string, object> parsed = Json.AsObject(Json.Parse(raw));
+            if (parsed == null) throw new IcmError("no JSON from /api/embed");
+            List<object> embs = Json.GetArr(parsed, "embeddings");      // {"embeddings":[[...]]}
+            if (embs.Count > 0) return ToDoubleArray(Json.AsArr(embs[0]));
+            object single;
+            if (parsed.TryGetValue("embedding", out single)) return ToDoubleArray(Json.AsArr(single)); // older shape
+            throw new IcmError("no 'embeddings' field in /api/embed reply");
+        }
+
+        private static double[] ToDoubleArray(List<object> nums)
+        {
+            var arr = new double[nums.Count];
+            for (int i = 0; i < nums.Count; i++) { double? d = Json.ToDouble(nums[i]); arr[i] = d.HasValue ? d.Value : 0.0; }
+            return arr;
+        }
     }
 }

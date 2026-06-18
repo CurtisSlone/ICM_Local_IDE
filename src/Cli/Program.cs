@@ -5,6 +5,8 @@
 //   icm mcp   <dir>                 serve this ICM over MCP (stdio)
 //   icm flow  <dir> <name> [in...]  run an authored workflow (flows/<name>.json)
 //   icm validate <dir> <table>      run the oracle on schemas/<table>.json + samples/<table>.txt
+//   icm docsearch <dir> <corpus> <query...>   hybrid search a built refdocs corpus
+//   icm reindex <dir>               regenerate manifest.json from files' <!--icm--> metadata blocks
 //   icm gen   <dir> <prompt...>     one raw generate call (smoke-test the model seat)
 //   icm selftest                    check the deterministic core (no model needed)
 //
@@ -39,7 +41,10 @@ namespace Icm
             {
                 Console.WriteLine("  kb entries: " + icm.Manifest.Entries.Count);
                 foreach (Entry e in icm.Manifest.Entries)
-                    Console.WriteLine("    - " + e.Id.PadRight(16) + " " + e.Title);
+                {
+                    string g = e.Group.Length > 0 ? "[" + e.Group + "] " : "";
+                    Console.WriteLine("    - " + e.Id.PadRight(22) + " " + g + e.Title);
+                }
             }
             else Console.WriteLine("  kb entries: (no manifest.json)");
             var names = new List<string>();
@@ -139,6 +144,32 @@ namespace Icm
                     CmdFlow(dir, name, input);
                     break;
                 }
+                case "docsearch":
+                {
+                    string dir = Arg(args, 1), corpus = Arg(args, 2);
+                    if (dir == null || corpus == null) throw new IcmError("usage: icm docsearch <dir> <corpus> [-k N] [--no-embed] <query...>");
+                    int kk = 5; bool emb = true; var qparts = new List<string>();
+                    for (int i = 3; i < args.Length; i++)
+                    {
+                        if (args[i] == "-k" && i + 1 < args.Length) { int.TryParse(args[++i], out kk); }
+                        else if (args[i] == "--no-embed") { emb = false; }
+                        else qparts.Add(args[i]);
+                    }
+                    if (qparts.Count == 0) throw new IcmError("usage: icm docsearch <dir> <corpus> [-k N] [--no-embed] <query...>");
+                    Instance icm = Instance.Open(dir);
+                    string embedModel = string.IsNullOrEmpty(icm.Config.Models.Embed) ? "nomic-embed-text" : icm.Config.Models.Embed;
+                    var status = (Action<string>)delegate(string s) { Console.Error.WriteLine("  - " + s); };
+                    Console.WriteLine(Search.Run(icm, EffectiveUrl(icm), corpus, string.Join(" ", qparts.ToArray()), kk, emb, embedModel, status));
+                    break;
+                }
+                case "reindex":
+                {
+                    string dir = Arg(args, 1);
+                    if (dir == null) throw new IcmError("usage: icm reindex <dir>");
+                    Instance icm = Instance.Open(dir);
+                    Indexer.Reindex(icm, delegate(string s) { Console.Error.WriteLine("  - " + s); });
+                    break;
+                }
                 case "selftest":
                     if (SelfTest.RunAll() != 0) Environment.Exit(2);
                     break;
@@ -160,6 +191,8 @@ namespace Icm
             "  icm mcp   <dir>                 serve this ICM over MCP (stdio)\n" +
             "  icm flow  <dir> <name> [in...]  run an authored workflow (flows/<name>.json)\n" +
             "  icm validate <dir> <table>      run the oracle on a table\n" +
+            "  icm docsearch <dir> <corpus> <query...>   hybrid search a built refdocs corpus\n" +
+            "  icm reindex <dir>               regenerate manifest.json from files' <!--icm--> blocks\n" +
             "  icm gen   <dir> <prompt...>     one raw generate call\n" +
             "  icm selftest                    check the deterministic core (no model)\n" +
             "\n" +

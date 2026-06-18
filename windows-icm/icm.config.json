@@ -1,0 +1,34 @@
+{
+  "$comment": "windows-icm: a Windows automation / coding ICM for C# (in-box csc, C# 5) and PowerShell. The KB is a growing library of references, patterns, recipes, scaffolds, and snippets. The oracle for code is the compiler/parser, wired as the csc_check and ps_parse tools and driven by the write_csharp / write_powershell generate-verify-repair flows.",
+  "name": "windows-icm",
+  "domain": "Windows automation and tooling with C# (in-box csc, C# 5) and PowerShell 5.1",
+  "models": {
+    "generate": "qwen3-coder:latest",
+    "dispatch": "qwen3-coder:latest",
+    "embed": "nomic-embed-text"
+  },
+  "ollama_url": "http://localhost:11434",
+  "tools": [
+    { "name": "ask", "kind": "kb_answer", "description": "Answer a Windows/C#/PowerShell question from the knowledge base (references, patterns, recipes)." },
+    {
+      "name": "csc_check",
+      "kind": "command",
+      "description": "Compile a C# file with the in-box csc at langversion 5 and report OK or the compiler diagnostics. The C# source is supplied on stdin.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/csc_check.ps1"],
+      "inputSchema": { "type": "object", "properties": { "code": { "type": "string", "description": "a complete C# compilation unit" } }, "required": ["code"] },
+      "stdin": "code",
+      "timeout": 60
+    },
+    {
+      "name": "ps_parse",
+      "kind": "command",
+      "description": "Parse-check a PowerShell script (syntax only, no execution) and report OK or the parse errors. The script is supplied on stdin.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/ps_parse.ps1"],
+      "inputSchema": { "type": "object", "properties": { "code": { "type": "string", "description": "a PowerShell script" } }, "required": ["code"] },
+      "stdin": "code",
+      "timeout": 30
+    },
+    { "name": "write_csharp", "kind": "flow", "flow": "csharp", "description": "Generate C# 5 code grounded in the KB, compile it, and repair until it builds." },
+    { "name": "write_powershell", "kind": "flow", "flow": "powershell", "description": "Generate PowerShell grounded in the KB, parse-check it, and repair until it parses." }
+  ]
+}

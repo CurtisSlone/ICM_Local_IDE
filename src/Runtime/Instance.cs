@@ -86,13 +86,14 @@ namespace Icm
             catch (Exception e) { throw new IcmError("writing " + p + ": " + e.Message); }
         }
 
-        // Read a KB entry by manifest id (model-facing grounding text).
+        // Read a KB entry by manifest id (model-facing grounding text). The routing metadata block
+        // is stripped so the model sees clean content.
         public string ReadEntry(string id)
         {
             if (Manifest == null) throw new IcmError("this ICM has no manifest.json");
             Entry e = Manifest.GetEntry(id);
             if (e == null) throw new IcmError("no manifest entry '" + id + "'");
-            return ReadFile(e.Path);
+            return Indexer.StripMeta(ReadFile(e.Path));
         }
     }
 }

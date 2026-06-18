@@ -129,12 +129,11 @@ change these per instance in `icm.config.json`, or override the URL with the `OL
 From this folder:
 
 ```
-.\icm.cmd selftest                           # verify the deterministic core (no model needed)
-.\icm.cmd open example-icm                    # load + summarize the bundled example instance
-.\icm.cmd validate example-icm tasks          # run the oracle on a table -> PASS
-.\icm.cmd validate example-icm tasks_broken   # -> FAIL, prints the 4 planted faults (exit code 2)
-.\icm-gui.cmd example-icm                      # open the GUI on the example instance
-.\icm.cmd chat example-icm                     # operator console (needs Ollama)
+.\icm.cmd selftest                              # verify the deterministic core (no model needed)
+.\icm.cmd open windows-icm                       # load + summarize the bundled instance
+.\icm-gui.cmd windows-icm                         # open the GUI on it
+.\icm.cmd chat windows-icm                        # operator console (needs Ollama)
+.\icm.cmd flow windows-icm csharp "a method that reverses a string"   # generate C# -> compile -> repair (needs Ollama)
 ```
 
 > **Why `.cmd` and not `.exe`?** Run the `.cmd` launchers, not the bare `.exe` files. On Windows 11
@@ -147,7 +146,7 @@ From this folder:
 
 ```
 .\icm-gui.cmd                  # opens empty; use File > Open Folder
-.\icm-gui.cmd example-icm      # open straight into an instance
+.\icm-gui.cmd windows-icm      # open straight into an instance
 ```
 
 Open any folder as a workspace; the tree, editor, and file operations are confined to that root. When
@@ -255,7 +254,7 @@ After editing, run `icm open <dir>` to see the resolved model seats and Ollama U
 
 ## Build your own instance (the contract)
 
-An instance is just a folder. Copy `example-icm/` and edit the pieces you need - the host runs
+An instance is just a folder. Copy `windows-icm/` and edit the pieces you need - the host runs
 whatever it finds, and every piece is optional.
 
 ```
@@ -296,20 +295,23 @@ with a `command` (an argv array) or a `script` (a `.ps1` file under `tools/`):
 
 ```json
 {
-  "name": "table_stats", "kind": "command",
-  "description": "Report row/column counts for a table.",
-  "command": ["powershell","-NoProfile","-ExecutionPolicy","Bypass","-File","tools/table_stats.ps1","-Table","{table}"],
-  "inputSchema": { "type": "object", "properties": { "table": { "type": "string" } }, "required": ["table"] },
-  "timeout": 30
+  "name": "csc_check", "kind": "command",
+  "description": "Compile a C# file with the in-box csc and report OK or the diagnostics.",
+  "command": ["powershell","-NoProfile","-ExecutionPolicy","Bypass","-File","tools/csc_check.ps1"],
+  "inputSchema": { "type": "object", "properties": { "code": { "type": "string" } }, "required": ["code"] },
+  "stdin": "code",
+  "timeout": 60
 }
 ```
 
-The host runs the command with the **instance folder as the working directory** (so `tools/...` and
-`samples/...` resolve), substitutes `{arg}` placeholders from the call's arguments, optionally pipes
-one argument to standard input (`"stdin": "argname"`), enforces `timeout` (seconds), and captures
-stdout / stderr / exit code. The command is passed as an argv array (not a shell string), so there is
-no shell-injection surface. The instance author writes the command; the caller only fills the
-declared arguments.
+The host runs the command with the **instance folder as the working directory** (so relative
+`tools/...` paths resolve), substitutes `{arg}` placeholders into the argv from the call's arguments,
+optionally pipes one argument to standard input instead (`"stdin": "argname"` - use this for large
+payloads like source code), enforces `timeout` (seconds), and captures stdout / stderr / exit code.
+The command is an argv array (not a shell string), so there is no shell-injection surface. The
+instance author writes the command; the caller only fills the declared arguments. (Note: a stdin
+payload arrives with a leading UTF-8 BOM, so a stdin-reading tool should strip it - see
+`windows-icm/tools/csc_check.ps1`.)
 
 ## Flows (authored workflows)
 
@@ -324,6 +326,8 @@ proposes inside nodes but never decides what runs next. Node kinds:
 - `propose` table + request -> row, ok (proposer -> oracle -> bounded repair)
 - `validate` table [+ tsv] -> verdict, ok (the oracle)
 - `tool` named tool + args -> output, ok (runs a command/script tool)
+- `loop` repeat a `body` of nodes until a state key is truthy (`until`), or `maxIterations` times -
+  the bounded repair/retry primitive that makes a flow an assembly line
 
 ```json
 { "name": "answer", "description": "Grounded knowledge-base answer",
@@ -334,9 +338,31 @@ proposes inside nodes but never decides what runs next. Node kinds:
   ] }
 ```
 
-Run it with `icm flow <dir> <name> [input...]`, or expose it as a tool (`{"kind": "flow", "flow":
-"answer"}`) so an MCP client can call it. `example-icm/flows/` has `answer` (route -> read -> answer)
-and `stats` (a deterministic `tool` node, no model).
+A `loop` node holds a `body` of nodes and repeats it until a state key is truthy (`until`) or up to
+`maxIterations`. This is how a "generate, check, repair until it passes" capability is built - as an
+*authored flow*, not a hardcoded host feature. The check is just a declared `tool` (a compiler, a
+parser, a linter), and its `output` is fed back into the next prompt:
+
+```json
+{ "name": "code-from-spec", "description": "Generate code, compile it, repair until it builds",
+  "nodes": [
+    { "id": "build", "kind": "loop", "maxIterations": 4, "until": "ok", "outputs": ["code"],
+      "body": [
+        { "id": "gen",   "kind": "generate", "outputs": ["code"],
+          "prompt": "Write C# for: {request}\nIf the compiler reported errors last time, fix them:\n{output}" },
+        { "id": "check", "kind": "tool", "tool": "csc_check", "args": { "code": "{code}" }, "outputs": ["output"] }
+      ] }
+  ] }
+```
+
+The `tool` node sets `ok` (did the command succeed) and `output` (its diagnostics); the loop stops
+when `ok` is true or after `maxIterations`. Swap `csc_check` for any check command an instance
+declares, and you have a verify-and-repair line for that language.
+
+Run a flow with `icm flow <dir> <name> [input...]`, or expose it as a tool (`{"kind": "flow",
+"flow": "answer"}`) so an MCP client can call it. The bundled `windows-icm/flows/` has `answer`
+(grounded Q&A) plus `csharp` and `powershell` (generate -> verify -> repair, using `csc_check` /
+`ps_parse` as the oracle).
 
 ## Drive it from a frontier model over MCP
 

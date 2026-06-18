@@ -94,10 +94,100 @@ namespace Icm
                 Set(state, OutputKey(n, 0, "output"), rr.Error != null ? rr.Error : rr.Output);
                 Set(state, "ok", rr.Error == null && rr.Ok);
             }
+            else if (n.Kind == Conventions.Node.Loop)
+            {
+                RunLoop(n, state);
+            }
+            else if (n.Kind == Conventions.Node.Branch)
+            {
+                RunBranch(n, state);
+            }
+            else if (n.Kind == Conventions.Node.Search)
+            {
+                string corpus = Json.GetStringOr(n.Extra, "corpus", "");
+                string query = StateStr(state, InputKey(n, 0, "request"));
+                int k = (int)NumExtra(n, "k", 5);
+                bool embed = Json.GetBool(n.Extra, "embed", true);
+                string embedModel = string.IsNullOrEmpty(icm.Config.Models.Embed) ? "nomic-embed-text" : icm.Config.Models.Embed;
+                string res = "";
+                try { res = Search.Run(icm, disp.Url, corpus, query, k, embed, embedModel, status); }
+                catch (Exception e) { status("flow: search '" + corpus + "' failed: " + e.Message); }
+                Set(state, OutputKey(n, 0, "context"), res);
+            }
             else
             {
                 status("flow: unknown node kind '" + n.Kind + "' (skipped)");
             }
+        }
+
+        // Repeat the node's body until `until` (a state key) is truthy, or up to `maxIterations`.
+        // With no `until`, runs exactly maxIterations times. This is the bounded repair/retry
+        // primitive that turns a flow into an assembly line (e.g. generate -> verify -> repair).
+        private void RunLoop(FlowNode n, Dictionary<string, object> state)
+        {
+            int max = (int)NumExtra(n, "maxIterations", 4);
+            if (max < 1) max = 1;
+            string until = Json.GetString(n.Extra, "until");
+
+            // Seed the body's output keys (and the until key) so {placeholders} in the first pass
+            // resolve to empty rather than literal braces.
+            foreach (FlowNode child in n.Body)
+                foreach (string outKey in child.Outputs)
+                    if (!state.ContainsKey(outKey)) state[outKey] = "";
+            if (until != null && !state.ContainsKey(until)) state[until] = false;
+
+            for (int i = 0; i < max; i++)
+            {
+                status("flow: loop " + n.Id + " (iteration " + (i + 1) + "/" + max + ")");
+                foreach (FlowNode child in n.Body)
+                {
+                    status("flow:   " + child.Id + " (" + child.Kind + ")");
+                    RunNode(child, state);
+                }
+                if (until != null && IsTruthy(state, until))
+                {
+                    status("flow: loop " + n.Id + " satisfied '" + until + "' after " + (i + 1) + " iteration(s)");
+                    return;
+                }
+            }
+            if (until != null) status("flow: loop " + n.Id + " hit max " + max + " without '" + until + "'");
+        }
+
+        // Run one of two child bodies based on a state-key test. The condition is deterministic and
+        // host-owned (the model never decides which branch runs). Tests: "truthy" (default)/"falsy"
+        // read the value as a boolean; "empty"/"nonempty" test the trimmed string. This is the
+        // "answer, else fall back" primitive (e.g. branch when `context` is empty -> search).
+        private void RunBranch(FlowNode n, Dictionary<string, object> state)
+        {
+            string when = Json.GetStringOr(n.Extra, "when", "");
+            string test = Json.GetStringOr(n.Extra, "test", "truthy");
+            bool cond = BranchTaken(state, when, test);
+            List<FlowNode> chosen = cond ? n.Then : n.Else;
+            status("flow: branch " + n.Id + " [" + when + " " + test + "] = " + cond +
+                " -> " + (cond ? "then" : "else") + " (" + chosen.Count + " node(s))");
+            foreach (FlowNode child in chosen)
+            {
+                status("flow:   " + child.Id + " (" + child.Kind + ")");
+                RunNode(child, state);
+            }
+        }
+
+        // Whether a branch's `then` body is taken. Static + deterministic so it is unit-testable.
+        public static bool BranchTaken(Dictionary<string, object> state, string when, string test)
+        {
+            string val = StateStr(state, when);
+            if (test == "empty") return val.Trim().Length == 0;
+            if (test == "nonempty") return val.Trim().Length > 0;
+            if (test == "falsy") return !IsTruthy(state, when);
+            return IsTruthy(state, when); // "truthy" (default)
+        }
+
+        private static bool IsTruthy(Dictionary<string, object> state, string key)
+        {
+            object v;
+            if (!state.TryGetValue(key, out v) || v == null) return false;
+            if (v is bool) return (bool)v;
+            return string.Equals(v.ToString(), "true", StringComparison.OrdinalIgnoreCase);
         }
 
         // ----- helpers -----

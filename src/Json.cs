@@ -32,6 +32,74 @@ namespace Icm
             return NewSerializer().Serialize(value);
         }
 
+        // Serialize with 2-space indentation, for human-readable generated files (e.g. manifest.json).
+        public static string SerializePretty(object value)
+        {
+            return Pretty(Serialize(value));
+        }
+
+        // Re-indent compact JSON to 2-space pretty form. Also unescapes the \uXXXX sequences that
+        // JavaScriptSerializer emits for printable characters (it escapes <, >, ', & for HTML safety),
+        // which we do not need in a config file. Structural-only: it tracks string literals so braces
+        // inside strings are left alone.
+        public static string Pretty(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return json;
+            var sb = new System.Text.StringBuilder(json.Length + 64);
+            int indent = 0;
+            bool inStr = false;
+            for (int i = 0; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (inStr)
+                {
+                    if (c == '\\' && i + 1 < json.Length)
+                    {
+                        char n = json[i + 1];
+                        if (n == 'u' && i + 5 < json.Length)
+                        {
+                            int code;
+                            if (int.TryParse(json.Substring(i + 2, 4), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out code)
+                                && code >= 0x20 && code != 0x22 && code != 0x5C && code != 0x7F)
+                            {
+                                sb.Append((char)code); i += 5; continue;
+                            }
+                        }
+                        sb.Append(c); sb.Append(n); i += 1; continue;
+                    }
+                    if (c == '"') inStr = false;
+                    sb.Append(c);
+                    continue;
+                }
+                switch (c)
+                {
+                    case '"': inStr = true; sb.Append(c); break;
+                    case '{':
+                    case '[':
+                    {
+                        char close = (c == '{') ? '}' : ']';
+                        int j = i + 1;
+                        while (j < json.Length && char.IsWhiteSpace(json[j])) j++;
+                        if (j < json.Length && json[j] == close) { sb.Append(c).Append(close); i = j; } // empty {} or []
+                        else { sb.Append(c); indent++; NewlineIndent(sb, indent); }
+                        break;
+                    }
+                    case '}':
+                    case ']': indent--; NewlineIndent(sb, indent); sb.Append(c); break;
+                    case ',': sb.Append(c); NewlineIndent(sb, indent); break;
+                    case ':': sb.Append(": "); break;
+                    default: if (!char.IsWhiteSpace(c)) sb.Append(c); break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        private static void NewlineIndent(System.Text.StringBuilder sb, int indent)
+        {
+            sb.Append('\n');
+            for (int i = 0; i < indent; i++) sb.Append("  ");
+        }
+
         /// Parse arbitrary JSON text into the dynamic object graph described above.
         public static object Parse(string text)
         {

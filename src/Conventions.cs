@@ -18,11 +18,22 @@ namespace Icm
         public const string FlowsDir = "flows";
         public const string KbDir = "kb";
         public const string ToolsDir = "tools";
+        public const string RefdocsDir = "refdocs";
 
-        // Relative-path builders for the table/flow conventions.
+        // Relative-path builders for the table/flow/refdocs conventions.
         public static string SchemaRel(string table) { return SchemasDir + "/" + table + ".json"; }
         public static string SampleRel(string table) { return SamplesDir + "/" + table + ".txt"; }
         public static string FlowRel(string name) { return FlowsDir + "/" + name + ".json"; }
+        public static string RefdocRel(string corpus) { return RefdocsDir + "/" + corpus + ".json"; }
+
+        // A routable reference file leads with a metadata block in an HTML comment (invisible in
+        // rendered markdown, parseable): <!--icm { "id","title","doc_type","summary","keywords",
+        // "source" } -->. `icm reindex` reads these to (re)generate manifest.json mechanically.
+        public const string MetaOpen = "<!--icm";
+        public const string MetaClose = "-->";
+
+        // Folders scanned for routable reference files (markdown with an icm metadata block).
+        public static readonly string[] RoutableDirs = { "reference", "patterns", "recipes", "scaffold", "snippets", "kb" };
 
         // Dispatcher intents (the constrained classify enum).
         internal static class Intent
@@ -59,6 +70,9 @@ namespace Icm
             public const string Propose = "propose";
             public const string Validate = "validate";
             public const string Tool = "tool";
+            public const string Loop = "loop";   // repeat a body of nodes until a state key is truthy, or N times
+            public const string Branch = "branch"; // run `then` or `else` body based on a state-key test
+            public const string Search = "search"; // hybrid docs search over a refdocs corpus -> context
         }
     }
 }

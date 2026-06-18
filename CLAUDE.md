@@ -12,9 +12,9 @@ codebase:
 - `icm.exe` - the console CLI (open / chat / mcp / flow / validate / gen / selftest).
 - `icm-gui.exe` - a "VSCode lite" WinForms front end (file tree + editor + chat panel).
 
-An **instance** (e.g. `example-icm/`) is pure data the host loads: a KB, table schemas, scripts
-(tools), and authored workflows (flows). The host is domain-agnostic; all domain content lives in
-the instance.
+An **instance** (e.g. the bundled `windows-icm/`) is pure data the host loads: a KB, table schemas,
+scripts (tools), and authored workflows (flows). The host is domain-agnostic; all domain content
+lives in the instance.
 
 **ICM = Interpretable Context Methodology** ("Folder Structure as Agent Architecture"), by Jake Van
 Clief & David McDermott (University of Edinburgh / Eduba; MIT; arXiv:2603.16021; repo
@@ -60,8 +60,9 @@ from the GUI build, `Gui\` (WinForms + GUI Main) from the console build.
 launchers, which load the assembly bytes inside trusted `powershell.exe`:
 
 ```
-.\icm.cmd validate example-icm tasks
-.\icm-gui.cmd example-icm
+.\icm.cmd open windows-icm
+.\icm.cmd flow windows-icm csharp "a method that reverses a string"
+.\icm-gui.cmd windows-icm
 ```
 
 Do NOT run `.\icm.exe` / `.\icm-gui.exe` directly (SAC will block them). The prebuilt exes are
@@ -92,6 +93,8 @@ icm chat <dir>                 dispatcher console (needs Ollama)
 icm mcp  <dir>                 serve the instance over MCP (stdio) - Claude connects here
 icm flow <dir> <name> [in...]  run an authored workflow (flows/<name>.json)
 icm validate <dir> <table>     run the oracle on schemas/<table>.json + samples/<table>.txt
+icm docsearch <dir> <corpus> [-k N] [--no-embed] <query...>   hybrid search a refdocs corpus
+icm reindex <dir>              regenerate manifest.json from files' <!--icm--> metadata blocks
 icm gen  <dir> <prompt...>     one raw generate call
 icm selftest                   check the deterministic core (no model)
 ```
@@ -100,13 +103,28 @@ icm selftest                   check the deterministic core (no model)
 
 ## The instance contract
 
-An instance directory may provide (all optional except as noted; see `example-icm/`):
+An instance directory may provide (all optional except as noted; see `windows-icm/`):
 
 - `icm.config.json` - `name`, `domain`, `models {generate, dispatch, embed}` (flat `model` /
   `embed_model` also accepted for the Python ICMs), `ollama_url`, `tools [...]`. Missing config is
   tolerated (defaults + KB only).
-- `manifest.json` - `entries [{id, title, path, summary}]` (the routing index; summaries are all
-  routing sees).
+- `manifest.json` - the routing index: `entries [{id, title, path, summary, doc_type, keywords}]`.
+  The dispatcher routes on `summary` + `keywords`; grounding then reads the file. **This file is
+  generated** - do not hand-edit it. Author the routing metadata in each source file's `<!--icm-->`
+  block (below) and run `icm reindex <dir>` to regenerate it mechanically (no LLM summarization).
+- Routable reference files live under the routable folders (`Conventions.RoutableDirs`: `reference`,
+  `patterns`, `recipes`, `scaffold`, `snippets`, `kb`) and lead with a metadata block in an HTML
+  comment (invisible in rendered markdown, parsed by the indexer):
+  ```
+  <!--icm
+  { "id": "...", "title": "...", "doc_type": "reference",
+    "summary": "one sharp line - the only thing routing sees besides keywords",
+    "keywords": ["..."], "source": { "origin": "...", "url": "...", "note": "..." } }
+  -->
+  ```
+  `source` carries provenance for cite-and-verify (the knowledge-oracle pattern); it is not routed
+  on. `icm reindex` skips files with no block (and `README.md` folder guides). Grounding reads
+  (`Instance.ReadEntry`) strip the block so the model sees clean content.
 - `kb/*.md` - one topic per file; the grounding the model reads.
 - `SYSTEM.md` - operating rules injected into the answer prompt.
 - `schemas/<table>.json` + `samples/<table>.txt` - the oracle's schema and TSV data.
@@ -134,10 +152,25 @@ effective Ollama URL. No host rebuild is needed for config changes (config is da
 
 ## Adding capabilities
 
+Prefer **composing primitives in an authored flow** over adding host code. The host should stay
+small, general primitives; capabilities belong in instance content (flows/skills). The flow node
+kinds are the primitives: `route`, `read`, `generate`, `answer`, `propose`, `validate`, `tool`,
+`loop` (repeat a `body` until a state key is truthy, or `maxIterations` times - the bounded
+repair/retry primitive), `branch` (run a `then` or `else` body based on a `when`/`test` on a state
+key: `empty`/`nonempty`/`truthy`/`falsy` - the conditional primitive), and `search` (hybrid
+BM25+embedding search over a `refdocs/<corpus>.json`, writing the hits to `context`). The bundled
+`windows-icm/flows/answer_fallback.json` composes these into tier-2 grounding: route+read the KB,
+then `branch` when `context` is empty to `search` the docs corpus, then `answer`. For example, a
+"generate code, compile, repair until it builds"
+capability (a.k.a. `generate_verify`) is **not** a host feature - it is an authored `loop` flow whose
+check is a declared `tool` (e.g. `csc`), feeding the tool's `{output}` back into the next `generate`
+prompt. Build that as a flow in the instance, not a node in the engine.
+
+When you genuinely do need to touch the host:
 - A new **tool**: add an entry to the instance's `icm.config.json` (`command`/`script` + optional
   `inputSchema`/`stdin`/`timeout`/`env`). No host change needed.
-- A new **flow node kind**: add a `case` in `Runtime/FlowEngine.cs` and a constant in
-  `Conventions.Node`.
+- A new **flow node kind** (only when no composition of existing nodes works): add a branch in
+  `Runtime/FlowEngine.cs` and a constant in `Conventions.Node`.
 - A new **dispatcher intent / tool kind**: add the constant in `Conventions`, a branch in
   `Dispatcher.Turn` / `Mcp.CallTool`. (If these multiply, consider a capability registry instead of
   the switches - deferred for now.)

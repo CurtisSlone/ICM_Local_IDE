@@ -155,7 +155,9 @@ namespace Icm
             foreach (Entry e in icm.Manifest.Entries)
             {
                 ids.Add(e.Id);
-                lines.Add("- " + e.Id + " : " + e.Title + " - " + e.Summary);
+                string grp = e.Group.Length > 0 ? " (" + e.Group + ")" : "";
+                string kw = e.Keywords.Count > 0 ? "  [keywords: " + string.Join(", ", e.Keywords.ToArray()) + "]" : "";
+                lines.Add("- " + e.Id + grp + " : " + e.Title + " - " + e.Summary + kw);
             }
             ids.Add("none");
 

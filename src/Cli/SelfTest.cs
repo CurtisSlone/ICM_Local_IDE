@@ -21,6 +21,9 @@ namespace Icm
             fail += Check("argv quoting", ArgvQuoting);
             fail += Check("path-escape guard", PathGuard);
             fail += Check("path conventions", PathConventions);
+            fail += Check("metadata block parse + strip", MetaBlock);
+            fail += Check("json pretty-print", JsonPretty);
+            fail += Check("flow branch condition", BranchCondition);
 
             Console.WriteLine(fail == 0 ? "selftest: ALL PASS" : ("selftest: " + fail + " FAILED"));
             return fail;
@@ -106,6 +109,41 @@ namespace Icm
             return Conventions.SchemaRel("skills") == "schemas/skills.json"
                 && Conventions.SampleRel("skills") == "samples/skills.txt"
                 && Conventions.FlowRel("answer") == "flows/answer.json";
+        }
+
+        private static bool MetaBlock()
+        {
+            string doc = "<!--icm\n{ \"id\": \"x\", \"keywords\": [\"a\", \"b\"] }\n-->\n# Title\n\nbody text";
+            Dictionary<string, object> meta = Indexer.ExtractMeta(doc);
+            if (meta == null || Json.GetString(meta, "id") != "x" || Json.GetArr(meta, "keywords").Count != 2) return false;
+            string stripped = Indexer.StripMeta(doc);
+            if (stripped.IndexOf("icm") >= 0 || !stripped.StartsWith("# Title")) return false;
+            // no block: ExtractMeta is null, StripMeta is identity
+            return Indexer.ExtractMeta("# plain\ntext") == null && Indexer.StripMeta("# plain") == "# plain";
+        }
+
+        private static bool JsonPretty()
+        {
+            // round-trips to the same object, indents, and unescapes printable \uXXXX (here: <, ')
+            string pretty = Json.SerializePretty(Json.Obj("note", "a<b's", "list", new object[] { 1, 2 }, "empty", new object[0]));
+            Dictionary<string, object> back = Json.AsObject(Json.Parse(pretty));
+            return back != null && Json.GetString(back, "note") == "a<b's"
+                && pretty.Contains("\n  ") && pretty.Contains("[]") && Json.GetArr(back, "list").Count == 2;
+        }
+
+        private static bool BranchCondition()
+        {
+            var st = new Dictionary<string, object>();
+            st["empty"] = "";
+            st["filled"] = "some context";
+            st["flag"] = true;
+            // empty/nonempty test the trimmed string; truthy/falsy read it as a bool
+            return FlowEngine.BranchTaken(st, "empty", "empty")
+                && !FlowEngine.BranchTaken(st, "filled", "empty")
+                && FlowEngine.BranchTaken(st, "filled", "nonempty")
+                && FlowEngine.BranchTaken(st, "flag", "truthy")
+                && !FlowEngine.BranchTaken(st, "flag", "falsy")
+                && FlowEngine.BranchTaken(st, "missing", "empty"); // absent key reads as empty
         }
 
         private static bool Throws(Action a)
