@@ -13,9 +13,10 @@ Two Windows-native executables over one shared codebase:
 
 - `icm.exe` - the console CLI and operator console (`icm <dir>` / open / chat / mcp / flow / list /
   validate / gen / selftest). This is the main single-operator interface.
-- `icm-gui.exe` - an OPTIONAL "VSCode lite" WinForms desktop front end (file tree + editor + chat
-  panel). Secondary; the terminal console is the primary path. It is not an IDE - the project is the
-  ICM host and its interface is the operator console.
+- `icm-gui.exe` - a LEGACY "VSCode lite" WinForms desktop front end (file tree + editor + chat
+  panel). Kept for existing users; NOT built by default (build with `build.ps1 -Gui`). This is a
+  console-first app - it is not an IDE; the project is the ICM host and its interface is the operator
+  console. Do not add new features to the GUI; new work targets the console.
 
 An **instance** (e.g. the bundled `windows-icm/`) is pure data the host loads: a KB, table schemas,
 scripts (tools), and authored workflows (flows). The host is domain-agnostic; all domain content
@@ -36,7 +37,10 @@ Spelling is "Interpretable" (per the paper), not "Interpreted".
 The model PROPOSES; a deterministic ORACLE decides. Reliability comes from structure plus the
 oracle, not from the model being smart. Three roles, one trust line:
 
-- EMBEDDER narrows candidates; never decides or generates. (Not yet implemented in this host.)
+- EMBEDDER narrows candidates; never decides or generates. (`Runtime/Embedder.cs`: ranks flows / KB
+  entries by cosine similarity to the query and keeps the top-k before the constrained model pick;
+  used by `Dispatcher.Route` / `RouteMany` / `RouteFlow` and by `Search`. Falls back to all candidates
+  when the `embed` seat is unset or Ollama is unreachable.)
 - BASE MODEL proposes: picks from an enum, drafts, writes a row. Never trusted to be right alone or
   to pick the next step.
 - ORACLE (here: a JSON-schema-driven TSV validator) accepts or rejects. It has no opinions.
@@ -66,9 +70,11 @@ No .NET SDK on this machine - we build with the **in-box .NET Framework `csc.exe
 C# 5). No NuGet, no MSBuild.
 
 ```
-powershell -ExecutionPolicy Bypass -File build.ps1     # writes icm.exe and icm-gui.exe
+powershell -ExecutionPolicy Bypass -File build.ps1          # console only (default): writes icm.exe
+powershell -ExecutionPolicy Bypass -File build.ps1 -Gui     # also rebuild the legacy icm-gui.exe
 ```
 
+Console-first: the default build writes only `icm.exe`; the legacy GUI is built only with `-Gui`.
 `build.ps1` globs `src\` recursively and partitions by folder: `Cli\` (console Main) is excluded
 from the GUI build, `Gui\` (WinForms + GUI Main) from the console build.
 
@@ -93,8 +99,9 @@ setx PATH "%PATH%;C:\Users\curti\Documents\ollama_ICM_Code\win_icm_code"   # onc
 ```
 
 Do NOT run `.\icm.exe` / `.\icm-gui.exe` directly (SAC will block them). The prebuilt exes are
-committed so downloaders can use the launchers immediately. The WinForms GUI (`icm-gui.cmd`) still
-works but is secondary now - the terminal console is the main single-operator interface.
+committed so downloaders can use the launchers immediately. The WinForms GUI (`icm-gui.cmd`) is legacy
+- it still works, but the terminal console is the supported single-operator interface and new work
+targets it, not the GUI.
 
 Verify the deterministic core with no model: `.\icm.cmd selftest` (asserts the oracle, JSON, TSV,
 argv quoting, the path-escape guard, and path conventions).

@@ -29,6 +29,7 @@ namespace Icm
             fail += Check("slash command parse", SlashParse);
             fail += Check("slash redirect + fence strip", SlashRedirect);
             fail += Check("router gate", RouterGate);
+            fail += Check("embedder rank", EmbedderRank);
 
             Console.WriteLine(fail == 0 ? "selftest: ALL PASS" : ("selftest: " + fail + " FAILED"));
             return fail;
@@ -145,6 +146,18 @@ namespace Icm
             if (cmd != "list" || rest != "") return false;
             Dispatcher.ParseCommand("/ASK   Foo bar ", out cmd, out rest);   // case-folded, trimmed
             return cmd == "ask" && rest == "Foo bar";
+        }
+
+        private static bool EmbedderRank()
+        {
+            // query points along x; "a" is identical, "c" is 45deg, "b" is orthogonal -> top2 = a, c
+            var q = new double[] { 1.0, 0.0 };
+            var cands = new List<KeyValuePair<string, double[]>>();
+            cands.Add(new KeyValuePair<string, double[]>("a", new double[] { 1.0, 0.0 }));
+            cands.Add(new KeyValuePair<string, double[]>("b", new double[] { 0.0, 1.0 }));
+            cands.Add(new KeyValuePair<string, double[]>("c", new double[] { 0.7, 0.7 }));
+            List<string> top = Embedder.RankByVectors(q, cands, 2);
+            return top.Count == 2 && top[0] == "a" && top[1] == "c";
         }
 
         private static bool RouterGate()

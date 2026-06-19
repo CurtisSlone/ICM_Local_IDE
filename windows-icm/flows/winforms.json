@@ -1,0 +1,15 @@
+{
+  "name": "winforms",
+  "description": "Generate a WinForms desktop GUI app grounded in EVERY relevant KB entry, compile it as a winexe with the WinForms references, and repair until it builds.",
+  "whenToUse": "Write or generate a WinForms desktop GUI app - a window with controls (buttons, labels, events) - compiled as a winexe and repaired until it builds.",
+  "nodes": [
+    { "id": "pick",  "kind": "route_many", "inputs": ["request"],   "outputs": ["entry_ids"], "maxK": 3 },
+    { "id": "read",  "kind": "read",       "inputs": ["entry_ids"], "outputs": ["context"] },
+    { "id": "build", "kind": "loop", "maxIterations": 5, "until": "ok", "outputs": ["code"],
+      "body": [
+        { "id": "gen", "kind": "generate", "outputs": ["code"],
+          "prompt": "Write a COMPLETE single-file Windows Forms app in C# that compiles with the in-box csc at langversion 5, target winexe. Requirements:\n- references System.Windows.Forms and System.Drawing (assume they are referenced; just use the namespaces)\n- a [STAThread] static void Main() that calls Application.EnableVisualStyles() then Application.Run(new MainForm())\n- a MainForm : Form subclass that builds all controls in code (NO designer, NO .resx)\n- wire events with named methods or anonymous delegates\nFORBIDDEN (will not compile under C# 5): string interpolation $\"...\", expression-bodied members =>, null-conditional ?., target-typed new, records, tuples. Use string concatenation or string.Format and full method/property bodies.\nGround your code in these reference entries (use their exact idioms):\n\n--- REFERENCE ---\n{context}\n--- END ---\n\nTask: {request}\n\nIf the compiler reported errors on the previous attempt, fix exactly those:\n{output}\n\nReturn ONE complete, compilable C# file and nothing else (no prose, no markdown fences)." },
+        { "id": "check", "kind": "tool", "tool": "csc_winforms", "args": { "code": "{code}" }, "outputs": ["output"] }
+      ] }
+  ]
+}

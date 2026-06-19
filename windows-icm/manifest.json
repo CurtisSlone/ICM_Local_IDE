@@ -910,6 +910,44 @@
         "PS 5.1",
         "advanced function"
       ]
+    },
+    {
+      "id": "capture-window-to-png",
+      "title": "Capture a window to a PNG (PrintWindow)",
+      "path": "snippets/powershell/capture-window-to-png.md",
+      "summary": "Render any top-level window (e.g. a WinForms form under test) straight to a PNG via user32 PrintWindow with PW_RENDERFULLCONTENT - works even when the window is occluded, off-screen, or hidden from normal screen capture.",
+      "doc_type": "snippet",
+      "group": "powershell",
+      "keywords": [
+        "PrintWindow",
+        "PW_RENDERFULLCONTENT",
+        "screenshot",
+        "WinForms",
+        "capture",
+        "Bitmap",
+        "user32",
+        "headless",
+        "GDI"
+      ]
+    },
+    {
+      "id": "run-unsigned-exe-in-memory",
+      "title": "Run an unsigned .NET exe under Smart App Control (in-memory)",
+      "path": "snippets/powershell/run-unsigned-exe-in-memory.md",
+      "summary": "Run a locally-built/unsigned .NET exe that Smart App Control blocks on disk, by loading its bytes in-process inside trusted powershell.exe - on an STA thread, invoking Main with the right arity.",
+      "doc_type": "snippet",
+      "group": "powershell",
+      "keywords": [
+        "Smart App Control",
+        "SAC",
+        "unsigned exe",
+        "Assembly.Load",
+        "in-memory",
+        "STAThread",
+        "EntryPoint",
+        "launcher",
+        "code integrity"
+      ]
     }
   ]
 }

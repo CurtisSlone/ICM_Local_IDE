@@ -1,0 +1,11 @@
+{
+  "name": "snippet",
+  "description": "Capture a reusable snippet: generate a complete snippet file (icm metadata block + fenced code + short notes) for the snippets/ layer, grounded in existing entries. Redirect the output to snippets/<group>/<name>.md and run /reindex.",
+  "whenToUse": "Capture or save a reusable code snippet - produce a ready-to-file snippet (metadata block + code) for the snippets/ layer.",
+  "nodes": [
+    { "id": "pick", "kind": "route_many", "inputs": ["request"],   "outputs": ["entry_ids"], "maxK": 3 },
+    { "id": "read", "kind": "read",       "inputs": ["entry_ids"], "outputs": ["context"] },
+    { "id": "gen",  "kind": "generate",   "outputs": ["snippet"],
+      "prompt": "Produce a COMPLETE snippet file for an ICM 'snippets' layer, ready to save as snippets/<group>/<name>.md. It MUST begin with an HTML-comment metadata block, with VALID JSON inside, exactly in this form:\n<!--icm\n{ \"id\": \"<kebab-id>\", \"title\": \"<short title>\", \"doc_type\": \"snippet\", \"group\": \"<csharp or powershell>\", \"summary\": \"<one sharp line>\", \"keywords\": [\"...\"], \"source\": { \"origin\": \"authored\" } }\n-->\nThen a '# Title' heading, a one-line intro, ONE fenced code block with the snippet, and a short '## Notes' only if useful. Keep the code minimal and correct (C# 5 for csharp, Windows PowerShell 5.1 for powershell). Match the style of these existing entries:\n\n--- REFERENCE ---\n{context}\n--- END ---\n\nSnippet to capture: {request}\n\nReturn ONLY the file content (the metadata block followed by the markdown). No commentary, and do NOT wrap the whole thing in an outer code fence." }
+  ]
+}

@@ -26,6 +26,8 @@ namespace Icm
         private const int MaxHistory = 6;        // turns kept for coreference rewrite
         private const int MaxProposeRepairs = 4; // bounded repair on a failing proposed row
         private const int MaxProblemsShown = 40;
+        private const int RouteCandidateK = 8;       // embedder narrows a single KB route to this many
+        private const int RouteManyCandidateK = 12;  // ... and a multi-route to this many
 
         private readonly Instance icm;
         private readonly string url;
@@ -34,6 +36,11 @@ namespace Icm
         private Cancel cancel;                                       // the in-flight op's cancel handle
         private string pendingFlowId;   // a router-proposed flow awaiting y/n confirmation
         private string pendingArgs;
+        private bool streamedThisTurn;  // set when this turn streamed its output via OnToken
+
+        // Optional per-front-end token sink. When set (the console sets it), freeform generation
+        // (ask / make / chat) streams tokens here as they arrive. Null = non-streaming (GUI, MCP).
+        public Action<string> OnToken;
 
         public Dispatcher(Instance icm, string url, Action<string> status)
         {
@@ -63,6 +70,7 @@ namespace Icm
             r.Standalone = line;
             if (line.Length == 0) { r.Text = ""; return r; }
             cancel = new Cancel();
+            streamedThisTurn = false;
 
             // Resolve a pending router confirmation (a plain y/n answer to "Run the X flow?").
             if (pendingFlowId != null && line[0] != '/')
@@ -96,9 +104,22 @@ namespace Icm
 
         private TurnResult Done(TurnResult r, string line)
         {
+            r.Streamed = streamedThisTurn;
             Remember("you: " + line);
             Remember("icm: " + (r.IsError ? r.Text : Truncate(r.Text, 400)));
             return r;
+        }
+
+        // Generate freeform text, streaming to OnToken when a front end has wired it (the console);
+        // otherwise a normal blocking call. Either way returns the full text.
+        private string GenerateMaybeStream(string prompt, double temperature)
+        {
+            if (OnToken != null)
+            {
+                streamedThisTurn = true;
+                return Ollama.GenerateStream(url, icm.Config.Models.Generate, prompt, temperature, GenTimeoutMs, OnToken, cancel);
+            }
+            return Ollama.Generate(url, icm.Config.Models.Generate, prompt, null, temperature, GenTimeoutMs, cancel);
         }
 
         private static bool IsAffirmative(string s)
@@ -162,7 +183,7 @@ namespace Icm
 
         private RouteResult RouteFlow(string request)
         {
-            List<FlowInfo> flows = FlowCatalog();
+            List<FlowInfo> flows = NarrowFlows(request, FlowCatalog(), RouteCandidateK);
             if (flows.Count == 0) return null;
             var ids = new List<string>();
             var lines = new List<string>();
@@ -185,6 +206,40 @@ namespace Icm
             rr.Confidence = Json.GetStringOr(v, "confidence", "low");
             if (rr.Args.Length == 0) rr.Args = request;   // default the flow input to the raw line
             return rr;
+        }
+
+        // Embedder narrowing (the ICM "embedder" role): rank candidates by similarity to the query and
+        // keep the top-k, so the constrained model pick chooses from a short, relevant list. Falls back
+        // to all candidates when the embed seat is unset or Ollama is unreachable. No-op at small sizes.
+        private List<Entry> NarrowEntries(string query, List<Entry> entries, int k)
+        {
+            if (entries.Count <= k) return entries;
+            var cands = new List<Cand>();
+            foreach (Entry e in entries)
+                cands.Add(new Cand(e.Id, e.Title + ". " + e.Summary + " " + string.Join(" ", e.Keywords.ToArray())));
+            List<string> top = Embedder.RankTopK(icm, url, icm.Config.Models.Embed, query, cands, k, status);
+            if (top == null || top.Count == 0) return entries;
+            var byId = new Dictionary<string, Entry>();
+            foreach (Entry e in entries) byId[e.Id] = e;
+            var outl = new List<Entry>();
+            foreach (string id in top) { Entry e; if (byId.TryGetValue(id, out e)) outl.Add(e); }
+            if (outl.Count == 0) return entries;
+            Status("route: embedding-narrowed to " + outl.Count + " of " + entries.Count + " entries");
+            return outl;
+        }
+
+        private List<FlowInfo> NarrowFlows(string query, List<FlowInfo> flows, int k)
+        {
+            if (flows.Count <= k) return flows;
+            var cands = new List<Cand>();
+            foreach (FlowInfo fi in flows) cands.Add(new Cand(fi.Id, fi.Name + ". " + fi.WhenToUse));
+            List<string> top = Embedder.RankTopK(icm, url, icm.Config.Models.Embed, query, cands, k, status);
+            if (top == null || top.Count == 0) return flows;
+            var byId = new Dictionary<string, FlowInfo>();
+            foreach (FlowInfo fi in flows) byId[fi.Id] = fi;
+            var outl = new List<FlowInfo>();
+            foreach (string id in top) { FlowInfo fi; if (byId.TryGetValue(id, out fi)) outl.Add(fi); }
+            return outl.Count > 0 ? outl : flows;
         }
 
         private List<FlowInfo> FlowCatalog()
@@ -445,7 +500,7 @@ namespace Icm
             if (notes.Length > 0) sb.Append("\nProject notes (NOTES.md, prior session context):\n" + Truncate(notes, 1500) + "\n");
             if (history.Count > 0) sb.Append("\nConversation so far:\n" + string.Join("\n", history.ToArray()) + "\n");
             sb.Append("\nOperator: " + line + "\n\nReply briefly and concretely. If a slash command would do what they want, name it exactly. Do not invent commands or APIs you were not told about.");
-            return Ollama.Generate(url, icm.Config.Models.Generate, sb.ToString(), null, 0.4, GenTimeoutMs, cancel);
+            return GenerateMaybeStream(sb.ToString(), 0.4);
         }
 
         private void Remember(string entry)
@@ -500,10 +555,11 @@ namespace Icm
         private string Route(string query)
         {
             if (icm.Manifest == null || icm.Manifest.Entries.Count == 0) return null;
+            List<Entry> entries = NarrowEntries(query, icm.Manifest.Entries, RouteCandidateK);
 
             var ids = new List<string>();
             var lines = new List<string>();
-            foreach (Entry e in icm.Manifest.Entries)
+            foreach (Entry e in entries)
             {
                 ids.Add(e.Id);
                 string grp = e.Group.Length > 0 ? " (" + e.Group + ")" : "";
@@ -540,7 +596,7 @@ namespace Icm
 
             var enumIds = new List<string>();
             var lines = new List<string>();
-            foreach (Entry e in icm.Manifest.Entries)
+            foreach (Entry e in NarrowEntries(query, icm.Manifest.Entries, RouteManyCandidateK))
             {
                 enumIds.Add(e.Id);
                 string grp = e.Group.Length > 0 ? " (" + e.Group + ")" : "";
@@ -567,10 +623,13 @@ namespace Icm
             return ids;
         }
 
+        // Used by flow generate/answer nodes too. Streams to OnToken when a front end wired it, so a
+        // flow's generation is visible live in the console. (All bundled flows' result key is the final
+        // generated text, so the console's "already streamed, don't reprint" stays correct.)
         public string Generate(string prompt, double temperature)
         {
             cancel = new Cancel();
-            return Ollama.Generate(url, icm.Config.Models.Generate, prompt, null, temperature, GenTimeoutMs, cancel);
+            return GenerateMaybeStream(prompt, temperature);
         }
 
         private string DoAsk(string query)
@@ -586,7 +645,7 @@ namespace Icm
                 system + "\n\nAnswer the question using ONLY the entry text below. If it does not contain " +
                 "the answer, say so.\n\n--- ENTRY TEXT ---\n" + entry + "\n--- END ---\n\nQuestion: " + query;
             Status("answer: generating (grounded)");
-            return Ollama.Generate(url, icm.Config.Models.Generate, prompt, null, 0.2, GenTimeoutMs, cancel);
+            return GenerateMaybeStream(prompt, 0.2);
         }
 
         private string DoMake(string query)
@@ -595,7 +654,7 @@ namespace Icm
             string prompt =
                 "You are a careful assistant for the ICM domain: " + icm.Config.Domain +
                 ". Produce what the operator asked for. Be concrete and minimal.\n\nRequest: " + query;
-            return Ollama.Generate(url, icm.Config.Models.Generate, prompt, null, 0.3, GenTimeoutMs, cancel);
+            return GenerateMaybeStream(prompt, 0.3);
         }
 
         private static string ParseTable(string query)

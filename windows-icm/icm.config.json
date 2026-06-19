@@ -29,8 +29,19 @@
       "stdin": "code",
       "timeout": 30
     },
+    {
+      "name": "csc_winforms",
+      "kind": "command",
+      "description": "Compile a complete WinForms C# program as a winexe (with the WinForms + Drawing references) at langversion 5 and report OK or the compiler diagnostics. The C# source is supplied on stdin.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/csc_winforms.ps1"],
+      "inputSchema": { "type": "object", "properties": { "code": { "type": "string", "description": "a complete WinForms C# program with a [STAThread] Main" } }, "required": ["code"] },
+      "stdin": "code",
+      "timeout": 90
+    },
     { "name": "write_csharp", "kind": "flow", "flow": "csharp", "description": "Generate C# 5 code grounded in the KB, compile it, and repair until it builds." },
     { "name": "write_grounded", "kind": "flow", "flow": "write_grounded", "description": "Generate C# 5 code grounded in EVERY relevant KB entry (multi-pick), compile it, and repair until it builds." },
+    { "name": "write_winforms", "kind": "flow", "flow": "winforms", "description": "Generate a WinForms desktop GUI app, compile it as a winexe with the WinForms references, and repair until it builds." },
+    { "name": "capture_snippet", "kind": "flow", "flow": "snippet", "description": "Capture a reusable code snippet as a ready-to-save snippet file (icm metadata block + code) for the snippets/ layer." },
     { "name": "write_powershell", "kind": "flow", "flow": "powershell", "description": "Generate PowerShell grounded in the KB, parse-check it, and repair until it parses." }
   ]
 }

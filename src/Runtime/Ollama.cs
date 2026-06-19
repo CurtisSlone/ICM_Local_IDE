@@ -128,6 +128,79 @@ namespace Icm
             return response.Trim();
         }
 
+        // Streaming /api/generate (freeform only - no `format`). Reads the NDJSON token stream, calls
+        // onToken for each piece as it arrives, and returns the full text. Mirrors Send's request setup
+        // and error handling, but reads incrementally instead of to EOF.
+        public static string GenerateStream(string url, string model, string prompt, double temperature,
+                                            int timeoutMs, Action<string> onToken, Cancel cancel = null)
+        {
+            var options = new Dictionary<string, object>();
+            options["num_ctx"] = NumCtx;
+            options["temperature"] = temperature;
+            var body = new Dictionary<string, object>();
+            body["model"] = model;
+            body["prompt"] = prompt;
+            body["stream"] = true;
+            body["options"] = options;
+
+            string full = url.TrimEnd('/') + "/api/generate";
+            HttpWebRequest req;
+            try { req = (HttpWebRequest)WebRequest.Create(full); }
+            catch (Exception e) { throw new IcmError("bad Ollama url '" + url + "': " + e.Message); }
+            req.Method = "POST";
+            req.KeepAlive = false;
+            req.Timeout = timeoutMs;
+            req.ReadWriteTimeout = timeoutMs;    // per-read: a stall between tokens errors, never hangs
+            req.Proxy = null;
+
+            var sb = new StringBuilder();
+            try
+            {
+                if (cancel != null) cancel.Register(req);
+                req.ContentType = "application/json";
+                byte[] data = Encoding.UTF8.GetBytes(Json.Serialize(body));
+                req.ContentLength = data.Length;
+                using (Stream s = req.GetRequestStream()) s.Write(data, 0, data.Length);
+                using (var resp = (HttpWebResponse)req.GetResponse())
+                {
+                    if (resp.StatusCode != HttpStatusCode.OK)
+                        throw new IcmError("Ollama returned non-200 status: " + (int)resp.StatusCode);
+                    using (Stream rs = resp.GetResponseStream())
+                    using (var sr = new StreamReader(rs, Encoding.UTF8))
+                    {
+                        string line;
+                        while ((line = sr.ReadLine()) != null)   // one JSON object per line (NDJSON)
+                        {
+                            line = line.Trim();
+                            if (line.Length == 0) continue;
+                            Dictionary<string, object> obj;
+                            try { obj = Json.AsObject(Json.Parse(line)); } catch { continue; }
+                            if (obj == null) continue;
+                            string piece = Json.GetString(obj, "response");
+                            if (!string.IsNullOrEmpty(piece)) { sb.Append(piece); if (onToken != null) onToken(piece); }
+                            if (Json.GetBool(obj, "done", false)) break;
+                        }
+                    }
+                }
+            }
+            catch (WebException we)
+            {
+                if (cancel != null && cancel.Cancelled) throw new IcmError("request cancelled");
+                var er = we.Response as HttpWebResponse;
+                if (er != null)
+                {
+                    string detail;
+                    try { using (var srr = new StreamReader(er.GetResponseStream())) detail = srr.ReadToEnd(); }
+                    catch { detail = ""; }
+                    throw new IcmError("Ollama at " + full + " returned " + (int)er.StatusCode + ": " + detail);
+                }
+                throw new IcmError("contacting Ollama at " + full + " (timeout " + timeoutMs + "ms?): " + we.Message);
+            }
+            finally { if (cancel != null) cancel.Done(); }
+
+            return sb.ToString().Trim();
+        }
+
         // Convenience for schema-constrained calls: parse the response string as a JSON object.
         public static Dictionary<string, object> GenerateJson(string url, string model, string prompt,
                                                               object schema, double temperature, int timeoutMs, Cancel cancel = null)

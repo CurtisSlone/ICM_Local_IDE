@@ -18,6 +18,16 @@ namespace Icm
             // Status trace goes to stderr so stdout carries only the conversation.
             var d = new Dispatcher(icm, url, delegate(string s) { Console.Error.WriteLine("  - " + s); });
 
+            // Stream freeform generation token-by-token. A blank line is printed before the first token
+            // so the answer is not jammed against the prompt; the turn's r.Streamed tells us not to
+            // re-print the text afterward.
+            bool firstToken = false;
+            d.OnToken = delegate(string t)
+            {
+                if (firstToken) { Console.WriteLine(); firstToken = false; }
+                Console.Write(t);
+            };
+
             while (true)
             {
                 Console.Write("icm > ");
@@ -28,10 +38,12 @@ namespace Icm
                 // fast-path the obvious exits so a down model can't trap the operator
                 if (line == "quit" || line == "exit" || line == ":q") break;
 
+                firstToken = true;
                 TurnResult r = d.Turn(line);
                 if (r.Intent == Conventions.Intent.Quit) break;
                 if (r.Intent == "clear") { Console.Clear(); continue; }
-                if (r.IsError) Console.Error.WriteLine("\n" + r.Text + "\n");
+                if (r.Streamed) { Console.WriteLine(); Console.WriteLine(); }   // already on screen; end the line + space
+                else if (r.IsError) Console.Error.WriteLine("\n" + r.Text + "\n");
                 else Console.WriteLine("\n" + r.Text + "\n");
             }
             Console.WriteLine("bye");

@@ -5,7 +5,7 @@ checks the model's output. You point the host at a folder (an "instance") - a kn
 schemas, scripts, and workflows - and operate it from a **terminal operator console**: `icm <dir>`
 opens the instance and drops you into a chat where you plan in natural language and act with slash
 commands (built to run inside a VSCode integrated terminal, like `code <dir>`). The same engine is
-also exposed over [MCP](https://modelcontextprotocol.io) and through an optional desktop GUI.
+also exposed over [MCP](https://modelcontextprotocol.io) and through a legacy desktop GUI.
 
 It is Windows-native and dependency-light: it builds with the C# compiler that ships in the box with
 the .NET Framework (no SDK, no NuGet, no MSBuild) and talks to a local [Ollama](https://ollama.com)
@@ -69,7 +69,7 @@ adds a machine check the frontier setup did not need.
 
 | Concern | ICM (frontier agent) | This host (local model) |
 | --- | --- | --- |
-| Navigating the folders | the agent reads them and picks what to load | code crawls: a constrained **enum pick** chooses the entry, then code reads and **injects** the scoped context |
+| Navigating the folders | the agent reads them and picks what to load | code crawls: the **embedder narrows** the candidates, a constrained **enum pick** chooses the entry, then code reads and **injects** the scoped context |
 | Sequencing | the agent decides what runs next across numbered stages | explicit **slash commands** route to capabilities and authored **flows** sequence multi-step work; the model never picks the step (`/do` offers an opt-in classifier) |
 | Checking output | a human reviews each stage's file | a deterministic **oracle** gates table output, with bounded repair (the human still edits) |
 | Model output shape | trusted to format itself | **grammar/enum-constrained**, so only a valid shape can be emitted |
@@ -121,10 +121,10 @@ Two Windows executables built from one shared codebase:
 - **`icm.exe`** - the terminal operator console and CLI. `icm <dir>` opens the console on an instance
   (VSCode-style), plus open / chat / mcp / flow / list / validate / gen / selftest. **This is the
   primary interface.**
-- **`icm-gui.exe`** - an optional "VSCode-lite" desktop GUI over the same engine: a workspace file
+- **`icm-gui.exe`** - a LEGACY "VSCode-lite" desktop GUI over the same engine: a workspace file
   tree (add / rename / delete / edit, confined to the opened folder), a text editor with a
-  line-number gutter and find/replace, and a chat panel. Secondary - reach for it if you want a
-  graphical workspace; everything it does is also available from the console.
+  line-number gutter and find/replace, and a chat panel. Kept for existing users only; the console is
+  the supported interface and does everything it does. Not built by default - use `build.ps1 -Gui`.
 
 Prebuilt binaries are included in this folder, so you can run it without building anything.
 
@@ -143,7 +143,7 @@ From this folder:
 .\icm.cmd open windows-icm        # load + summarize the bundled instance (no model)
 .\icm.cmd windows-icm             # open the operator console on it (VSCode-style; needs Ollama)
 .\icm.cmd flow windows-icm csharp "a method that reverses a string"   # run one flow non-interactively
-.\icm-gui.cmd windows-icm         # optional: the desktop GUI on it
+.\icm-gui.cmd windows-icm         # legacy GUI (build it first with: build.ps1 -Gui)
 ```
 
 Inside the console you chat to plan and use slash commands to act - e.g. `/write a hex viewer > out\Hex.cs`
@@ -156,10 +156,10 @@ generates verified C# straight into a file, and `/help` lists the commands. See
 > allows. See [Running under Smart App Control](#running-under-smart-app-control). Tip: add this
 > folder to your `PATH` and you can run `icm ...` / `icm-gui .` from anywhere.
 
-## The GUI (optional)
+## The GUI (legacy)
 
-The terminal console is the primary interface; the GUI is a secondary, graphical way to work the same
-engine - reach for it if you want a file tree and editor alongside the chat.
+The terminal console is the primary, supported interface. The GUI is kept for legacy use only: it is
+not built by default (use `build.ps1 -Gui`) and no new work targets it.
 
 ```
 .\icm-gui.cmd                  # opens empty; use File > Open Folder
@@ -266,7 +266,9 @@ settings that matter most:
 - `generate` - writes the actual text (grounded answers, freeform `make`, proposed rows).
 - `dispatch` - the small classify/route call (and the conversational router's flow pick); omit it to
   reuse the `generate` model.
-- `embed` - optional, reserved for embedding-based routing.
+- `embed` - powers hybrid search **and** narrows routing candidates (the embedder ranks flows / KB
+  entries by similarity and keeps the top-k before the model picks). Optional: if unset or Ollama is
+  down, routing falls back to offering the model the full list.
 
 **Conversational router.** Plain text in the console is matched to an authored flow (the model
 proposes from the closed catalog; a deterministic gate keeps only a confident, on-list pick). Control
@@ -484,14 +486,16 @@ run them in-process.
 ## Build from source
 
 ```
-powershell -ExecutionPolicy Bypass -File build.ps1
+powershell -ExecutionPolicy Bypass -File build.ps1          # console only (default)
+powershell -ExecutionPolicy Bypass -File build.ps1 -Gui     # also rebuild the legacy GUI
 ```
 
-This calls the in-box .NET Framework C# compiler (`csc.exe`, pre-Roslyn, so the code targets C# 5)
-with no SDK, NuGet, or MSBuild, and writes `icm.exe` and `icm-gui.exe`. It globs `src\` recursively
-and partitions by folder so each executable has exactly one entry point: the `Cli\` folder (console)
-is excluded from the GUI build and the `Gui\` folder (WinForms) from the console build. Non-default
-references: `System.Web.Extensions.dll` (JSON) for both, and `System.Windows.Forms.dll` +
+This is a **console-first** app: the default build writes only `icm.exe`. The legacy WinForms
+`icm-gui.exe` is built only with `-Gui`. The script calls the in-box .NET Framework C# compiler
+(`csc.exe`, pre-Roslyn, so the code targets C# 5) with no SDK, NuGet, or MSBuild. It globs `src\`
+recursively and partitions by folder so each executable has exactly one entry point: the `Cli\` folder
+(console) is excluded from the GUI build and the `Gui\` folder (WinForms) from the console build.
+Non-default references: `System.Web.Extensions.dll` (JSON) for both, and `System.Windows.Forms.dll` +
 `System.Drawing.dll` for the GUI. Verify a build with `.\icm.cmd selftest`.
 
 ## Project layout (`src/`)
@@ -515,14 +519,14 @@ Gui/             the GUI executable (WinForms): Gui, Native
 Working: instance loading; the operator console (conversational router, slash commands, casual
 `/chat`, `NOTES.md` session memory, output redirect to files); the oracle (`validate` / `propose` with
 bounded repair) and the compiler/parser oracles for code; grounded `ask` and authored flows (including
-generate-compile-repair); hybrid BM25+embedding search with shipped corpora; KB enumeration
-(`catalog` / `list` / `flows`); the optional WinForms GUI (with markdown rendering); and the MCP server
-(verified by `mcp-smoke.ps1`).
+generate-compile-repair); hybrid BM25+embedding search with shipped corpora; **embedder-narrowed
+routing** (the `embed` seat ranks flows / KB entries before the model picks); KB enumeration
+(`catalog` / `list` / `flows`); **console token streaming** for freeform generation (`/ask`, `/make`,
+`/chat`, and flow `generate`/`answer` nodes print token-by-token; the legacy GUI does not); the legacy
+WinForms GUI (with markdown rendering); and the MCP server (verified by `mcp-smoke.ps1`).
 
 Not yet implemented: a frontier model authoring + registering *new* flows over MCP (it can run
-existing ones); embedding-based routing for the local tier (search uses embeddings, routing does not);
-token streaming (turns print on completion); cross-table reference checks in the oracle; and a built
-PowerShell docs corpus.
+existing ones); cross-table reference checks in the oracle; and a built PowerShell docs corpus.
 
 ## License
 

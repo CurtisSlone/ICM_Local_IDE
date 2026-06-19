@@ -1,15 +1,21 @@
-# build.ps1 — compile the ICM host (console) and the GUI with the C# compiler that ships with
-# Windows. No SDK, no NuGet, no MSBuild: we call the in-box .NET Framework csc.exe directly.
+# build.ps1 — compile the ICM host with the C# compiler that ships with Windows. No SDK, no NuGet,
+# no MSBuild: we call the in-box .NET Framework csc.exe directly.
 #
-# Two executables share one core (Json/Config/Manifest/Icm/Oracle/Ollama/Dispatch):
-#   icm.exe      console CLI         (src\Program.cs has its Main; -target:exe)
-#   icm-gui.exe  WinForms front end  (src\Gui.cs has its Main;     -target:winexe)
-# Each entry-point file is excluded from the other's compile so there is exactly one Main.
+# This is a CONSOLE-FIRST app. The default build produces only the console exe:
+#   icm.exe      console CLI / operator console   (src\Cli\ has its Main; -target:exe)
+# The WinForms GUI is kept for LEGACY use and is built only with -Gui:
+#   icm-gui.exe  WinForms front end (legacy)       (src\Gui\ has its Main; -target:winexe)
+# Each entry-point folder is excluded from the other's compile so there is exactly one Main.
 #
 # Non-default references: System.Web.Extensions.dll (JavaScriptSerializer, the JSON layer) for
-# both; System.Windows.Forms.dll + System.Drawing.dll (resolved from the GAC) for the GUI.
+# both; System.Windows.Forms.dll + System.Drawing.dll (GAC) for the legacy GUI.
 # -noconfig ignores the machine csc.rsp so the build is deterministic; -langversion:5 pins the
 # language to what this in-box (pre-Roslyn) compiler supports.
+#
+#   powershell -ExecutionPolicy Bypass -File build.ps1          # console only (default)
+#   powershell -ExecutionPolicy Bypass -File build.ps1 -Gui     # also rebuild the legacy GUI
+
+param([switch] $Gui)   # the GUI is legacy; build it only with -Gui
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -29,7 +35,7 @@ function Resolve-GacDll($name) {
 # is exactly one Main. Shared code (root, Model\, Runtime\, Server\) compiles into both.
 $all     = Get-ChildItem "$root\src" -Recurse -Filter *.cs
 $console = $all | Where-Object { $_.Directory.Name -ne 'Gui' } | ForEach-Object { $_.FullName }
-$gui     = $all | Where-Object { $_.Directory.Name -ne 'Cli' } | ForEach-Object { $_.FullName }
+$guiSrc  = $all | Where-Object { $_.Directory.Name -ne 'Cli' } | ForEach-Object { $_.FullName }
 
 # ---- console: icm.exe ----
 & $csc -nologo -noconfig -optimize+ -langversion:5 -warn:4 -target:exe -platform:anycpu `
@@ -38,12 +44,16 @@ $gui     = $all | Where-Object { $_.Directory.Name -ne 'Cli' } | ForEach-Object 
 if ($LASTEXITCODE -ne 0) { throw "console build failed (csc exit $LASTEXITCODE)" }
 Write-Host "built $root\icm.exe"
 
-# ---- GUI: icm-gui.exe ----
-$wf = Resolve-GacDll "System.Windows.Forms"
-$dr = Resolve-GacDll "System.Drawing"
-& $csc -nologo -noconfig -optimize+ -langversion:5 -warn:4 -target:winexe -platform:anycpu `
-    "-reference:System.dll" "-reference:System.Core.dll" "-reference:System.Web.Extensions.dll" `
-    "-reference:$wf" "-reference:$dr" `
-    "-out:$root\icm-gui.exe" $gui
-if ($LASTEXITCODE -ne 0) { throw "gui build failed (csc exit $LASTEXITCODE)" }
-Write-Host "built $root\icm-gui.exe"
+# ---- GUI: icm-gui.exe (LEGACY - only with -Gui) ----
+if ($Gui) {
+    $wf = Resolve-GacDll "System.Windows.Forms"
+    $dr = Resolve-GacDll "System.Drawing"
+    & $csc -nologo -noconfig -optimize+ -langversion:5 -warn:4 -target:winexe -platform:anycpu `
+        "-reference:System.dll" "-reference:System.Core.dll" "-reference:System.Web.Extensions.dll" `
+        "-reference:$wf" "-reference:$dr" `
+        "-out:$root\icm-gui.exe" $guiSrc
+    if ($LASTEXITCODE -ne 0) { throw "gui build failed (csc exit $LASTEXITCODE)" }
+    Write-Host "built $root\icm-gui.exe (legacy)"
+} else {
+    Write-Host "(skipped icm-gui.exe - the GUI is legacy; pass -Gui to build it)"
+}
