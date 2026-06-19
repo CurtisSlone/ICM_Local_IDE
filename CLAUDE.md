@@ -143,8 +143,9 @@ icm selftest                   check the deterministic core (no model)
 An instance directory may provide (all optional except as noted; see `windows-icm/`):
 
 - `icm.config.json` - `name`, `domain`, `models {generate, dispatch, embed}` (flat `model` /
-  `embed_model` also accepted for the Python ICMs), `ollama_url`, `tools [...]`. Missing config is
-  tolerated (defaults + KB only).
+  `embed_model` also accepted for the Python ICMs), `ollama_url`, `router {autorun}`, `tools [...]`,
+  and `commands [...]` (instance-declared slash shortcuts -> flow/tool/launch; see the boundary note).
+  Missing config is tolerated (defaults + KB only).
 - `manifest.json` - the routing index: `entries [{id, title, path, summary, doc_type, keywords}]`.
   The dispatcher routes on `summary` + `keywords`; grounding then reads the file. **This file is
   generated** - do not hand-edit it. Author the routing metadata in each source file's `<!--icm-->`
@@ -188,6 +189,39 @@ Verify with `icm open <dir>` - it prints the resolved `generate` / `dispatch` / 
 effective Ollama URL. No host rebuild is needed for config changes (config is data, read at load).
 
 ## Adding capabilities
+
+### Host vs instance: the boundary (do not blur it)
+
+The binary (`src/`) is a **domain-agnostic harness**. It must never contain domain logic or hardcode
+the name of a specific flow/tool/corpus. What belongs where:
+
+- **Host (harness):** the flow engine + node kinds; the dispatcher (router, gate, embedder narrowing,
+  `> path` redirect, NOTES); the oracle *mechanism* (the TSV validator); search/embedder mechanics;
+  MCP; and **generic** invocation - `/flow <name>`, `/tool <name>`, `/list`, `/flows`, `/ask`, `/make`,
+  `/chat`, `/validate`, `/propose`, `/search`, `/note`, `/do`. These name no specific capability.
+- **Instance (domain, e.g. `windows-icm/`):** every concrete capability - flows (`csharp`, `winforms`,
+  `write_grounded`, …), tools/scripts (`csc_check`, `ps_parse`, `build_csharp`, `run_app`, …), the KB,
+  schemas, refdocs. **C#/PowerShell/compile/run specifics live ONLY here.**
+
+To add a domain capability, add a **flow / tool / recipe / KB entry in the instance** and invoke it
+generically (`/flow <name>`, the router, or `/tool <name>` for a declared tool). Do **not** add a host
+command for it. A new flow/tool needs no rebuild (discovered at runtime); only the engine itself does.
+
+**Domain shortcuts are instance-declared, not in the host.** The binary ships only generic verbs
+(`/flow`, `/tool`, `/ask`, `/make`, `/chat`, ...) plus an alias *mechanism*. Each instance maps its own
+slash commands in `icm.config.json` under `commands`; each entry is one of:
+
+```json
+{ "name": "compile", "tool": "build_csharp", "arg": "src", "help": "..." }   // run a declared tool
+{ "name": "write",   "flow": "write_grounded", "help": "..." }                // run a flow
+{ "name": "run",     "launch": "run_app",      "help": "..." }                // detached in-memory launch
+```
+
+The host dispatches the three kinds generically (`Dispatcher.RunAlias`: flow -> `RunNamedFlow`, tool ->
+`ToolRunner` mapping the argument to `arg`/stdin/first-required, launch -> detached `tools/<launch>.ps1
+-Exe <path>`) and lists them in `/help`. `windows-icm` declares `/write`, `/csharp`, `/ps`, `/winforms`,
+`/snippet`, `/compile`, `/run` there - the host names none of them. So a non-coding instance simply
+declares different commands and the binary is unchanged. (`Config.CommandAlias` / `Config.FindCommand`.)
 
 Prefer **composing primitives in an authored flow** over adding host code. The host should stay
 small, general primitives; capabilities belong in instance content (flows/skills). The flow node

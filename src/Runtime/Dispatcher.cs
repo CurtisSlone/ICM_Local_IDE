@@ -36,6 +36,7 @@ namespace Icm
         private Cancel cancel;                                       // the in-flight op's cancel handle
         private string pendingFlowId;   // a router-proposed flow awaiting y/n confirmation
         private string pendingArgs;
+        private string pendingRedirect; // a "> path" to save the pending flow's output to, if any
         private bool streamedThisTurn;  // set when this turn streamed its output via OnToken
 
         // Optional per-front-end token sink. When set (the console sets it), freeform generation
@@ -77,16 +78,17 @@ namespace Icm
             {
                 if (IsAffirmative(line))
                 {
-                    string id = pendingFlowId, args = pendingArgs;
-                    pendingFlowId = null; pendingArgs = null;
+                    string id = pendingFlowId, args = pendingArgs, rd = pendingRedirect;
+                    pendingFlowId = null; pendingArgs = null; pendingRedirect = null;
                     r.Intent = "flow:" + id;
                     Status("router: running '" + id + "'");
                     RunNamedFlow(id, args, r);
+                    ApplyRedirect(r, rd, "flow:" + id, args);
                     return Done(r, line);
                 }
                 if (IsNegative(line))
-                { pendingFlowId = null; pendingArgs = null; r.Intent = "chat"; r.Text = "Cancelled."; return Done(r, line); }
-                pendingFlowId = null; pendingArgs = null; // anything else cancels the pending action, handled below
+                { pendingFlowId = null; pendingArgs = null; pendingRedirect = null; r.Intent = "chat"; r.Text = "Cancelled."; return Done(r, line); }
+                pendingFlowId = null; pendingArgs = null; pendingRedirect = null; // anything else cancels, handled below
             }
 
             if (line[0] == '/')
@@ -96,9 +98,10 @@ namespace Icm
                 return r;
             }
 
-            // Plain text: conversational router (or straight to /ask when routing is off).
-            if (icm.Config.Router.Enabled()) RouteConversational(line, r);
-            else RunSlash("/ask " + line, r);
+            // Plain text: parse an optional "> path" redirect, then route (or /ask when routing is off).
+            string redirect; string clean = ParseRedirect(line, out redirect);
+            if (icm.Config.Router.Enabled()) RouteConversational(clean, redirect, r);
+            else { RunSlash("/ask " + clean, r); ApplyRedirect(r, redirect, "ask", clean); }
             return Done(r, line);
         }
 
@@ -150,7 +153,7 @@ namespace Icm
             return GateDecision.Match;
         }
 
-        private void RouteConversational(string line, TurnResult r)
+        private void RouteConversational(string line, string redirect, TurnResult r)
         {
             Status("router: matching a flow");
             RouteResult rr = null;
@@ -161,7 +164,7 @@ namespace Icm
             foreach (FlowInfo fi in FlowCatalog()) ids.Add(fi.Id);
 
             if (rr == null || Gate(rr.FlowId, rr.Confidence, ids) == GateDecision.Fallback)
-            { RunSlash("/ask " + line, r); return; }
+            { RunSlash("/ask " + line, r); ApplyRedirect(r, redirect, "ask", line); return; }
 
             // Auto-run only when configured AND the model is highly confident.
             if (icm.Config.Router.AutoRunHigh() && rr.Confidence == "high")
@@ -169,15 +172,17 @@ namespace Icm
                 r.Intent = "flow:" + rr.FlowId;
                 Status("router: running '" + rr.FlowId + "' (high)");
                 RunNamedFlow(rr.FlowId, rr.Args, r);
-                r.Text = "-> routed to `" + rr.FlowId + "` (high)\n\n" + r.Text;
+                if (!string.IsNullOrEmpty(redirect)) ApplyRedirect(r, redirect, "flow:" + rr.FlowId, rr.Args);
+                else r.Text = "-> routed to `" + rr.FlowId + "` (high)\n\n" + r.Text;
                 return;
             }
 
-            // Otherwise propose and wait for confirmation.
-            pendingFlowId = rr.FlowId; pendingArgs = rr.Args;
+            // Otherwise propose and wait for confirmation (carrying the redirect to the y/n turn).
+            pendingFlowId = rr.FlowId; pendingArgs = rr.Args; pendingRedirect = redirect;
             r.Intent = "router";
             string argNote = string.IsNullOrEmpty(rr.Args) ? "" : " with: " + rr.Args;
-            r.Text = "This looks like the `" + rr.FlowId + "` flow (" + rr.Confidence + " confidence)" + argNote +
+            string saveNote = string.IsNullOrEmpty(redirect) ? "" : " (saves to " + redirect + ")";
+            r.Text = "This looks like the `" + rr.FlowId + "` flow (" + rr.Confidence + " confidence)" + argNote + saveNote +
                 ".\nRun it? (y / n) - or type a slash command instead.";
         }
 
@@ -296,20 +301,20 @@ namespace Icm
                     case "chat":
                         if (rest.Length == 0) { Usage(r, "/chat <message>"); break; }
                         r.Intent = "chat"; r.Text = DoChat(rest); break;
-                    case "write": case "build":
-                        if (rest.Length == 0) { Usage(r, "/write <task>"); break; }
-                        RunNamedFlow("write_grounded", rest, r); break;
-                    case "csharp": case "cs":
-                        if (rest.Length == 0) { Usage(r, "/csharp <task>"); break; }
-                        RunNamedFlow("csharp", rest, r); break;
-                    case "ps": case "powershell":
-                        if (rest.Length == 0) { Usage(r, "/ps <task>"); break; }
-                        RunNamedFlow("powershell", rest, r); break;
                     case "flow":
                     {
+                        // Generic: run any authored flow by name. Domain shortcuts (/write, /compile, ...)
+                        // are instance-declared command aliases (icm.config.json), handled in default.
                         string name, input; SplitFirst(rest, out name, out input);
                         if (name.Length == 0) { Usage(r, "/flow <name> <input>"); break; }
                         RunNamedFlow(name, input, r); break;
+                    }
+                    case "tool":
+                    {
+                        // Generic: run any declared command/script tool by name.
+                        string tname, targ; SplitFirst(rest, out tname, out targ);
+                        if (tname.Length == 0) { Usage(r, "/tool <name> [arg]"); break; }
+                        RunToolByName(tname, null, targ, r); break;
                     }
                     case "list": case "ls":
                         r.Text = (icm.Manifest != null) ? CatalogOr(rest) : "(no manifest.json)"; break;
@@ -362,7 +367,10 @@ namespace Icm
                         r.Intent = Conventions.Intent.Quit; r.Text = "bye"; break;
                     default:
                     {
-                        // Everything that is not a recognized command defaults to /ask on the whole line.
+                        // An instance-declared command alias (icm.config.json) wins; otherwise the whole
+                        // line defaults to /ask.
+                        CommandAlias alias = icm.Config.FindCommand(cmd);
+                        if (alias != null) { RunAlias(alias, rest, r); break; }
                         string q = rest.Length > 0 ? cmd + " " + rest : cmd;
                         if (q.Length == 0) { r.Text = Help(); break; }
                         r.Intent = Conventions.Intent.Ask; r.Text = DoAsk(q);
@@ -372,27 +380,104 @@ namespace Icm
             }
             catch (IcmError e) { r.IsError = true; r.Text = "[error] " + e.Message; }
 
-            // Redirect output to a file in the workspace ("... > path"). Code fences are stripped so a
-            // .cs/.ps1 file is clean. The write is recorded in NOTES.md for session continuity.
-            if (redirect != null && !r.IsError && r.Text != null && r.Text.Length > 0
-                && r.Intent != "clear" && r.Intent != Conventions.Intent.Quit)
-            {
-                try
-                {
-                    string content = Markdown.StripFence(r.Text);
-                    icm.WriteFile(redirect, content);
-                    r.WrittenPath = icm.Resolve(redirect);
-                    AppendNote("wrote `" + redirect + "` (/" + cmd + ": " + Truncate(task, 80) + ")");
-                    r.Text = "Wrote " + redirect + " (" + content.Length + " chars).";
-                }
-                catch (IcmError e) { r.IsError = true; r.Text = "[error] writing " + redirect + ": " + e.Message; }
-            }
+            ApplyRedirect(r, redirect, "/" + cmd, task);
         }
 
         private static void Usage(TurnResult r, string usage) { r.Text = "Usage: " + usage; r.IsError = true; }
 
-        // Parse a trailing " > path" redirect off a command's argument. Returns the argument without the
-        // redirect; sets path (null if none). Public for SelfTest.
+        private Tool FindTool(string name)
+        {
+            foreach (Tool t in icm.Config.Tools) if (t.Name == name) return t;
+            return null;
+        }
+
+        // Run an instance-declared command alias: a flow, a tool, or a detached launch. Keeps domain
+        // verbs out of the host - the binary only knows how to dispatch the three kinds.
+        private void RunAlias(CommandAlias a, string rest, TurnResult r)
+        {
+            r.Intent = a.Name;
+            if (!string.IsNullOrEmpty(a.Flow))
+            {
+                if (rest.Length == 0) { Usage(r, "/" + a.Name + " <input>"); return; }
+                RunNamedFlow(a.Flow, rest, r);
+            }
+            else if (!string.IsNullOrEmpty(a.Tool))
+            {
+                if (rest.Length == 0) { Usage(r, "/" + a.Name + " <" + (string.IsNullOrEmpty(a.Arg) ? "arg" : a.Arg) + ">"); return; }
+                RunToolByName(a.Tool, a.Arg, rest, r);
+            }
+            else if (!string.IsNullOrEmpty(a.Launch))
+            {
+                if (rest.Length == 0) { Usage(r, "/" + a.Name + " <path in the workspace>"); return; }
+                string target;
+                try { target = icm.Resolve(rest); } catch (IcmError e) { r.Text = "[error] " + e.Message; r.IsError = true; return; }
+                if (!System.IO.File.Exists(target)) { r.Text = "not found: " + rest; r.IsError = true; return; }
+                try { LaunchDetached(a.Launch, target); r.Text = "Launched " + rest + " (detached; close its window when done)."; }
+                catch (Exception e) { r.Text = "[error] launching: " + e.Message; r.IsError = true; }
+            }
+            else { r.Text = "command '/" + a.Name + "' has no target (flow/tool/launch) in icm.config.json"; r.IsError = true; }
+        }
+
+        // Run a declared command/script tool, mapping `rest` to argName (else the tool's stdin arg, else
+        // its first required input). Used by /tool and tool-kind command aliases.
+        private void RunToolByName(string toolName, string argName, string rest, TurnResult r)
+        {
+            Tool t = FindTool(toolName);
+            if (t == null) { r.Text = "no such tool: " + toolName; r.IsError = true; return; }
+            var args = new Dictionary<string, object>();
+            string key = argName;
+            if (string.IsNullOrEmpty(key)) key = t.StdinArg();
+            if (string.IsNullOrEmpty(key)) key = FirstRequiredArg(t);
+            if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(rest)) args[key] = rest;
+            ToolRunResult rr = ToolRunner.Run(icm, t, args);
+            r.Text = rr.Error != null ? rr.Error : (rr.Output.Length > 0 ? rr.Output : "(no output)");
+            r.IsError = rr.Error != null || !rr.Ok;
+        }
+
+        private static string FirstRequiredArg(Tool t)
+        {
+            var schema = t.InputSchema() as Dictionary<string, object>;
+            if (schema == null) return null;
+            List<object> req = Json.GetArr(schema, "required");
+            return req.Count > 0 && req[0] != null ? req[0].ToString() : null;
+        }
+
+        // Launch a workspace artifact via tools/<launcher>.ps1 (the SAC-safe in-memory loader), detached
+        // so a GUI app does not block the console. The launcher script takes -Exe <path>.
+        private void LaunchDetached(string launcher, string targetPath)
+        {
+            string loader = icm.Resolve(Conventions.ToolsDir + "/" + launcher + ".ps1");
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            psi.FileName = "powershell.exe";
+            psi.Arguments = "-STA -NoProfile -ExecutionPolicy Bypass -File \"" + loader + "\" -Exe \"" + targetPath + "\"";
+            psi.UseShellExecute = false;
+            psi.CreateNoWindow = true;
+            psi.WorkingDirectory = icm.Root;
+            System.Diagnostics.Process.Start(psi);   // detached; do not wait
+        }
+
+        // Write a command/flow's text output to a workspace file ("> path"): code fences stripped so a
+        // .cs/.ps1 lands clean, recorded in NOTES.md. Clears the streamed flag so the "Wrote" line shows
+        // even when the body was streamed live.
+        private void ApplyRedirect(TurnResult r, string redirect, string label, string task)
+        {
+            if (string.IsNullOrEmpty(redirect) || r.IsError || string.IsNullOrEmpty(r.Text)
+                || r.Intent == "clear" || r.Intent == Conventions.Intent.Quit) return;
+            try
+            {
+                string content = Markdown.StripFence(r.Text);
+                icm.WriteFile(redirect, content);
+                r.WrittenPath = icm.Resolve(redirect);
+                AppendNote("wrote `" + redirect + "` (" + label + ": " + Truncate(task, 80) + ")");
+                r.Text = "Wrote " + redirect + " (" + content.Length + " chars).";
+                streamedThisTurn = false;
+            }
+            catch (IcmError e) { r.IsError = true; r.Text = "[error] writing " + redirect + ": " + e.Message; }
+        }
+
+        // Parse a trailing " > path" redirect off a command's argument. The target must look like a path
+        // (has an extension or a separator, no spaces) so prose with " > " is not misread. Returns the
+        // argument without the redirect; sets path (null if none). Public for SelfTest.
         public static string ParseRedirect(string rest, out string path)
         {
             path = null;
@@ -401,7 +486,9 @@ namespace Icm
             if (idx >= 0)
             {
                 string p = rest.Substring(idx + 3).Trim();
-                if (p.Length > 0) { path = p; return rest.Substring(0, idx).Trim(); }
+                bool looksLikePath = p.Length > 0 && p.IndexOf(' ') < 0
+                    && (p.IndexOf('.') >= 0 || p.IndexOf('\\') >= 0 || p.IndexOf('/') >= 0);
+                if (looksLikePath) { path = p; return rest.Substring(0, idx).Trim(); }
             }
             return rest;
         }
@@ -866,26 +953,37 @@ namespace Icm
                 List<string> gs = icm.Manifest.Groups();
                 groups = gs.Count > 0 ? string.Join(", ", gs.ToArray()) : "(none)";
             }
-            return
-                "This is the " + icm.Config.Name + " operator console (" + icm.Config.Domain + ").\n" +
-                "Chat normally to plan and ask questions; use slash commands to act:\n\n" +
-                "  /ask <question>          grounded answer from the knowledge base\n" +
-                "  /write <task>            generate C#, compiled and repaired until it builds\n" +
-                "  /ps <task>               generate PowerShell, parse-checked\n" +
-                "  /make <prompt>           freeform generation (no grounding or verify)\n" +
-                "  /list [group]            list KB entries (groups: " + groups + ")\n" +
-                "  /search [corpus] <query> hybrid search the doc corpora\n" +
-                "  /validate <table>        run the oracle on a data table\n" +
-                "  /propose <description>   propose a table row, oracle-validated\n" +
-                "  /flow <name> <input>     run any flow by name\n" +
-                "  /flows                   list the workflows the router can match\n" +
-                "  /chat <message>          free conversation with the model (not grounded)\n" +
-                "  /note <text>  /notes     add to / show NOTES.md (session memory)\n" +
-                "  /do <request>            let the dispatcher classify and route it\n" +
-                "  /clear   /help   /quit\n\n" +
-                "Append ' > path' to save a command's output to a file, e.g. /write a hex viewer > out/Hex.cs\n" +
-                "Just type what you want - it is matched to a workflow and run after you confirm (y/n);\n" +
-                "if nothing fits, or you ask a question, it falls back to a grounded /ask.";
+            var sb = new StringBuilder();
+            sb.Append("This is the " + icm.Config.Name + " operator console (" + icm.Config.Domain + ").\n");
+            sb.Append("Chat normally to plan and ask questions; use slash commands to act.\n\n");
+            sb.Append("Generic commands (the harness):\n");
+            sb.Append("  /ask <question>          grounded answer from the knowledge base\n");
+            sb.Append("  /make <prompt>           freeform generation (no grounding or verify)\n");
+            sb.Append("  /chat <message>          free conversation with the model (not grounded)\n");
+            sb.Append("  /flow <name> <input>     run any authored flow\n");
+            sb.Append("  /tool <name> [arg]       run any declared tool\n");
+            sb.Append("  /flows                   list workflows the router can match\n");
+            sb.Append("  /list [group]            list KB entries (groups: " + groups + ")\n");
+            sb.Append("  /search [corpus] <query> hybrid search the doc corpora\n");
+            sb.Append("  /validate <table>        run the oracle on a data table\n");
+            sb.Append("  /propose <description>   propose a table row, oracle-validated\n");
+            sb.Append("  /note <text>  /notes     add to / show NOTES.md (session memory)\n");
+            sb.Append("  /do <request>            classify-and-route\n");
+            sb.Append("  /clear   /help   /quit\n");
+            if (icm.Config.Commands.Count > 0)
+            {
+                sb.Append("\n" + icm.Config.Name + " commands (from icm.config.json):\n");
+                foreach (CommandAlias a in icm.Config.Commands)
+                {
+                    string tgt = a.Flow != null ? "flow " + a.Flow : a.Tool != null ? "tool " + a.Tool : "launch " + a.Launch;
+                    string help = a.Help.Length > 0 ? a.Help : "-> " + tgt;
+                    sb.Append("  /" + a.Name.PadRight(22) + " " + help + "\n");
+                }
+            }
+            sb.Append("\nAppend ' > path' to save a command's output to a file (e.g. /flow csharp a string reverser > out\\Rev.cs).\n");
+            sb.Append("Just type what you want - it is matched to a workflow and run after you confirm (y/n);\n");
+            sb.Append("if nothing fits, or you ask a question, it falls back to a grounded /ask.");
+            return sb.ToString();
         }
     }
 }

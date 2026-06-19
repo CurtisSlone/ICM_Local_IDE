@@ -95,6 +95,21 @@ namespace Icm
         public bool AutoRunHigh() { return Autorun == "on"; }
     }
 
+    // An instance-declared slash-command shortcut. Keeps domain verbs OUT of the host: the binary
+    // ships only generic commands; each instance maps its own (e.g. /compile -> tool build_csharp) in
+    // icm.config.json. Exactly one target should be set: Flow (run a flow), Tool (run a command/script
+    // tool, mapping the argument to `Arg`/stdin), or Launch (launch a workspace artifact detached via
+    // tools/<Launch>.ps1).
+    internal class CommandAlias
+    {
+        public string Name = "";
+        public string Flow;
+        public string Tool;
+        public string Launch;
+        public string Arg;      // for Tool: the argument name `rest` maps to (else stdin / first required)
+        public string Help = "";
+    }
+
     internal class Config
     {
         public string Name = "";
@@ -103,6 +118,7 @@ namespace Icm
         public Router Router = new Router();
         public string OllamaUrl = "http://localhost:11434"; // host and Ollama share the machine
         public List<Tool> Tools = new List<Tool>();
+        public List<CommandAlias> Commands = new List<CommandAlias>(); // instance-declared slash shortcuts
         // Opaque oracle config (e.g. the TSV table schemas, or where to find them). The host
         // keeps it generic; the instance fills in the domain specifics.
         public object Oracle = null;
@@ -129,6 +145,19 @@ namespace Icm
             {
                 var to = t as Dictionary<string, object>;
                 if (to != null) c.Tools.Add(Tool.From(to));
+            }
+            foreach (object cm in Json.GetArr(root, "commands"))
+            {
+                var co = cm as Dictionary<string, object>;
+                if (co == null) continue;
+                var a = new CommandAlias();
+                a.Name = Json.GetStringOr(co, "name", "");
+                a.Flow = Json.GetString(co, "flow");
+                a.Tool = Json.GetString(co, "tool");
+                a.Launch = Json.GetString(co, "launch");
+                a.Arg = Json.GetString(co, "arg");
+                a.Help = Json.GetStringOr(co, "help", "");
+                if (a.Name.Length > 0) c.Commands.Add(a);
             }
             object oracle;
             if (root.TryGetValue("oracle", out oracle)) c.Oracle = oracle;
@@ -171,6 +200,14 @@ namespace Icm
         public string DispatchModel()
         {
             return string.IsNullOrEmpty(Models.Dispatch) ? Models.Generate : Models.Dispatch;
+        }
+
+        // An instance-declared command alias by name (case-insensitive), or null.
+        public CommandAlias FindCommand(string name)
+        {
+            foreach (CommandAlias a in Commands)
+                if (string.Equals(a.Name, name, StringComparison.OrdinalIgnoreCase)) return a;
+            return null;
         }
     }
 }

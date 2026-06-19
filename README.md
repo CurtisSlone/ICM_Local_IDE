@@ -214,19 +214,18 @@ The console never lets the weak local model decide what runs:
   `confirm` / `on` / `off`). If nothing fits - or you asked a plain question - it falls back to a
   grounded `/ask`. Unrecognized commands fall back to `/ask` too.
 - **Slash commands** - a line starting with `/` is dispatched **deterministically** by code (no
-  classify step) to a capability or flow:
-  - `/ask <q>` - answer grounded in the matching knowledge-base entry (this is the default).
-  - `/write <task>` - generate C#, compile it with the oracle, and repair until it builds.
-  - `/ps <task>` - generate PowerShell, parse-checked.
-  - `/list [group]` / `/search <query>` - enumerate the KB / hybrid-search the doc corpora.
+  classify step). The **generic** verbs are the harness (they name no specific capability):
+  - `/ask <q>` - answer grounded in the matching knowledge-base entry (also the plain-text default).
   - `/make <prompt>` - freeform generation (no grounding, no oracle).
-  - `/validate <table>` / `/propose <desc>` - the oracle path: validate a table, or have the model
-    propose a row the oracle gates (bounded repair; the GUI offers to insert a passing row).
-  - `/flow <name> <input>` - run any authored flow.
-  - `/chat <message>` - free conversation: the model plans with you and names the exact command to
-    run, but executes nothing (grounded in the KB catalog + `NOTES.md`).
-  - `/do <request>` - the opt-in classifier: let the dispatcher pick the intent and route it.
-  - `/note <text>` / `/notes` - append to / show `NOTES.md`, the persistent session memory.
+  - `/chat <message>` - free conversation: the model plans and names the command to run, executes nothing.
+  - `/flow <name> <input>` - run any authored flow; `/tool <name> [arg]` - run any declared tool.
+  - `/list [group]` / `/flows` / `/search [corpus] <q>` - enumerate the KB / flows / hybrid-search.
+  - `/validate <table>` / `/propose <desc>` - the oracle path (validate a table; propose a gated row).
+  - `/note <text>` / `/notes` - session memory; `/do <request>` - opt-in classify-and-route.
+
+  **Instance-declared shortcuts** come from `commands` in `icm.config.json` - the host hardcodes none
+  of them. `windows-icm` ships `/write`, `/csharp`, `/ps`, `/winforms`, `/snippet` (each -> a flow),
+  `/compile` (-> the `build_csharp` tool), and `/run` (-> launch a built `.exe`). `/help` lists them.
 
 Append `> path` to any command to save its output to a file in the workspace (markdown fences are
 stripped, so a `.cs`/`.ps1` lands clean and the GUI opens it). Writes and `/note` lines are recorded
@@ -303,6 +302,22 @@ it per instance:
 - `off` - disable routing; plain text goes straight to `/ask`.
 
 Anything that doesn't match a flow falls back to a grounded `/ask`.
+
+**Custom commands.** The binary is a domain-agnostic harness - it ships only generic verbs (`/flow`,
+`/tool`, `/ask`, ...). An instance declares its own slash shortcuts under `commands`, each mapping a
+name to a flow, a tool, or a detached launch:
+
+```json
+"commands": [
+  { "name": "write",   "flow": "write_grounded", "help": "generate C#, compile, repair" },
+  { "name": "compile", "tool": "build_csharp", "arg": "src", "help": "build a .cs to a runnable .exe" },
+  { "name": "run",     "launch": "run_app", "help": "launch a built .exe (detached)" }
+]
+```
+
+The host dispatches all three kinds generically and lists them in `/help`. A different domain (a
+compliance ICM, a Python ICM) declares entirely different commands - the binary never changes. This
+is the host/instance boundary: the framework is in the exe; the implementation is in the instance.
 
 **Search corpora.** `/search` and the `search` flow node read corpora from `refdocs-seed/`. The
 shipped `dotnet` (API signatures) and `dotnet_prose` (conceptual docs) corpora are committed there, so

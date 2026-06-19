@@ -30,6 +30,14 @@
       "timeout": 30
     },
     {
+      "name": "build_csharp",
+      "kind": "command",
+      "description": "Compile a workspace C# source file to a PERSISTENT .exe next to it (auto-detects WinForms -> winexe). Arg: src (path under the instance).",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/build_csharp.ps1", "{src}"],
+      "inputSchema": { "type": "object", "properties": { "src": { "type": "string", "description": "path to a .cs file under the instance" } }, "required": ["src"] },
+      "timeout": 90
+    },
+    {
       "name": "csc_winforms",
       "kind": "command",
       "description": "Compile a complete WinForms C# program as a winexe (with the WinForms + Drawing references) at langversion 5 and report OK or the compiler diagnostics. The C# source is supplied on stdin.",
@@ -43,5 +51,14 @@
     { "name": "write_winforms", "kind": "flow", "flow": "winforms", "description": "Generate a WinForms desktop GUI app, compile it as a winexe with the WinForms references, and repair until it builds." },
     { "name": "capture_snippet", "kind": "flow", "flow": "snippet", "description": "Capture a reusable code snippet as a ready-to-save snippet file (icm metadata block + code) for the snippets/ layer." },
     { "name": "write_powershell", "kind": "flow", "flow": "powershell", "description": "Generate PowerShell grounded in the KB, parse-check it, and repair until it parses." }
+  ],
+  "commands": [
+    { "name": "write",    "flow": "write_grounded", "help": "generate C# grounded in the KB, compile, repair" },
+    { "name": "csharp",   "flow": "csharp",         "help": "generate a single C# file, compile, repair" },
+    { "name": "ps",       "flow": "powershell",     "help": "generate PowerShell, parse-check, repair" },
+    { "name": "winforms", "flow": "winforms",       "help": "generate a WinForms GUI app, compile, repair" },
+    { "name": "snippet",  "flow": "snippet",        "help": "capture a reusable snippet file" },
+    { "name": "compile",  "tool": "build_csharp", "arg": "src", "help": "build a workspace .cs to a runnable .exe" },
+    { "name": "run",      "launch": "run_app",      "help": "launch a built .exe (detached, in-memory)" }
   ]
 }

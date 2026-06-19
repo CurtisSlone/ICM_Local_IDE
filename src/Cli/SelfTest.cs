@@ -30,6 +30,7 @@ namespace Icm
             fail += Check("slash redirect + fence strip", SlashRedirect);
             fail += Check("router gate", RouterGate);
             fail += Check("flow lint", FlowLintCheck);
+            fail += Check("command aliases", CommandAliases);
             fail += Check("embedder rank", EmbedderRank);
 
             Console.WriteLine(fail == 0 ? "selftest: ALL PASS" : ("selftest: " + fail + " FAILED"));
@@ -159,6 +160,17 @@ namespace Icm
             cands.Add(new KeyValuePair<string, double[]>("c", new double[] { 0.7, 0.7 }));
             List<string> top = Embedder.RankByVectors(q, cands, 2);
             return top.Count == 2 && top[0] == "a" && top[1] == "c";
+        }
+
+        private static bool CommandAliases()
+        {
+            var c = new Config();
+            c.Commands.Add(new CommandAlias { Name = "compile", Tool = "build_csharp", Arg = "src" });
+            c.Commands.Add(new CommandAlias { Name = "write", Flow = "write_grounded" });
+            CommandAlias a = c.FindCommand("COMPILE");   // case-insensitive
+            if (a == null || a.Tool != "build_csharp" || a.Arg != "src") return false;
+            if (c.FindCommand("write").Flow != "write_grounded") return false;
+            return c.FindCommand("nope") == null;
         }
 
         private static bool FlowLintCheck()
