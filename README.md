@@ -128,33 +128,52 @@ Two Windows executables built from one shared codebase:
 
 Prebuilt binaries are included in this folder, so you can run it without building anything.
 
-## Quick start
+## Getting Started
 
-**Prerequisites:** Windows 10/11 (the .NET Framework 4.x it needs is already installed).
-[Ollama](https://ollama.com) running locally is required for the model-backed features (`chat`,
-`ask`, `propose`, `gen`); `validate`, `selftest`, and script tools need no model. By default the host
-talks to `http://localhost:11434` and uses `qwen3-coder:latest` (generation) and `nomic-embed-text`;
-change these per instance in `icm.config.json`, or override the URL with the `OLLAMA_URL` env var.
-
-From this folder:
+**1. Prerequisites.** Windows 10/11 (the .NET Framework 4.x it needs is already installed). For the
+model-backed features, install [Ollama](https://ollama.com) and pull the two models:
 
 ```
-.\icm.cmd selftest                # verify the deterministic core (no model needed)
-.\icm.cmd open windows-icm        # load + summarize the bundled instance (no model)
-.\icm.cmd windows-icm             # open the operator console on it (VSCode-style; needs Ollama)
-.\icm.cmd flow windows-icm csharp "a method that reverses a string"   # run one flow non-interactively
-.\icm-gui.cmd windows-icm         # legacy GUI (build it first with: build.ps1 -Gui)
+ollama pull qwen3-coder
+ollama pull nomic-embed-text
 ```
 
-Inside the console you chat to plan and use slash commands to act - e.g. `/write a hex viewer > out\Hex.cs`
-generates verified C# straight into a file, and `/help` lists the commands. See
-[How the chat works](#how-the-chat-works).
+The host talks to `http://localhost:11434` by default and uses `qwen3-coder:latest` (generation) and
+`nomic-embed-text` (search + routing). Change these per instance in `icm.config.json`, or override the
+URL with `OLLAMA_URL`. `selftest`, `validate`, and script tools need no model.
 
-> **Why `.cmd` and not `.exe`?** Run the `.cmd` launchers, not the bare `.exe` files. On Windows 11
-> with Smart App Control on, an unsigned downloaded `.exe` is blocked from running directly; the
-> launchers load the program in-memory inside the already-trusted PowerShell, which Smart App Control
-> allows. See [Running under Smart App Control](#running-under-smart-app-control). Tip: add this
-> folder to your `PATH` and you can run `icm ...` / `icm-gui .` from anywhere.
+**2. Verify the core** (no model needed):
+
+```
+.\icm.cmd selftest
+```
+
+**3. Open the operator console** on the bundled `windows-icm` instance (needs Ollama):
+
+```
+.\icm.cmd windows-icm
+```
+
+**4. Use it.** Inside the console:
+- Type a plain question - you get a grounded answer from the knowledge base.
+- `/flows` lists what it can do; `/help` lists every command.
+- `/write a method that reverses a string` - generates C#, compiles it, and repairs until it builds.
+- Append `> out\Reverse.cs` to any command to save its output to a file.
+- `/chat <message>` for free conversation; `/note <text>` to jot session memory.
+
+See [How the chat works](#how-the-chat-works) for the full model. Prefer one-shot runs?
+`.\icm.cmd flow windows-icm csharp "a string reverser"` runs a single flow; `.\icm.cmd open windows-icm`
+just loads and summarizes the instance.
+
+**5. (Optional) Drive it from a frontier agent.** Connect Claude (or any MCP client) to
+`.\icm.cmd mcp windows-icm` - see
+[Drive it from a frontier model over MCP](#drive-it-from-a-frontier-model-over-mcp).
+
+> **Why `.cmd` and not `.exe`?** Run the `.cmd` launchers, not the bare `.exe`. On Windows 11 with
+> Smart App Control on, an unsigned `.exe` is blocked from running directly; the launchers load the
+> program in-memory inside the already-trusted PowerShell, which SAC allows. Tip: add this folder to
+> your `PATH` to run `icm ...` from anywhere (e.g. in the VS Code terminal). See
+> [Running under Smart App Control](#running-under-smart-app-control).
 
 ## The GUI (legacy)
 

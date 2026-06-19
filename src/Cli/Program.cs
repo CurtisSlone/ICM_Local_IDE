@@ -280,11 +280,16 @@ namespace Icm
                     string fdir = System.IO.Path.Combine(icmF.Root, Conventions.FlowsDir);
                     if (!System.IO.Directory.Exists(fdir)) { Console.WriteLine("(no flows/ dir)"); break; }
                     string[] ff = System.IO.Directory.GetFiles(fdir, "*.json"); System.Array.Sort(ff, StringComparer.OrdinalIgnoreCase);
+                    Console.WriteLine("authored flows:");
                     foreach (string f in ff)
                     {
                         try { Flow fl = Flow.Load(f); Console.WriteLine("  " + System.IO.Path.GetFileNameWithoutExtension(f).PadRight(18) + " " + fl.WhenToUse); }
                         catch (IcmError) { }
                     }
+                    Console.WriteLine("\nbuilt-in capabilities:");
+                    Console.WriteLine("  /chat              free conversation with the model (not grounded)");
+                    Console.WriteLine("  /ask               grounded answer from the knowledge base (plain-text default)");
+                    Console.WriteLine("  /make              freeform generation (no grounding, no oracle)");
                     break;
                 }
                 case "list":

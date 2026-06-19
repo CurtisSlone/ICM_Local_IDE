@@ -315,11 +315,16 @@ namespace Icm
                         r.Text = (icm.Manifest != null) ? CatalogOr(rest) : "(no manifest.json)"; break;
                     case "flows":
                     {
-                        var fl = FlowCatalog();
-                        if (fl.Count == 0) { r.Text = "(no flows in flows/)"; break; }
                         var sb = new StringBuilder();
-                        foreach (FlowInfo fi in fl) sb.Append("- " + fi.Id + ": " + fi.WhenToUse + "\n");
-                        r.Text = sb.ToString().TrimEnd();
+                        var fl = FlowCatalog();
+                        sb.Append("Authored flows (the router can match these, or run with /flow <name>):\n");
+                        if (fl.Count == 0) sb.Append("  (none in flows/)\n");
+                        else foreach (FlowInfo fi in fl) sb.Append("  " + fi.Id + " - " + fi.WhenToUse + "\n");
+                        sb.Append("\nBuilt-in capabilities:\n");
+                        sb.Append("  /chat <message> - free conversation with the model (not grounded)\n");
+                        sb.Append("  /ask <question> - grounded answer from the knowledge base (the plain-text default)\n");
+                        sb.Append("  /make <prompt>  - freeform generation (no grounding, no oracle)");
+                        r.Text = sb.ToString();
                         break;
                     }
                     case "search": case "docs":
