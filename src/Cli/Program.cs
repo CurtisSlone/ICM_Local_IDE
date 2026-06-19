@@ -86,6 +86,45 @@ namespace Icm
             Console.WriteLine("\n" + entries.Count + " entr" + (entries.Count == 1 ? "y" : "ies"));
         }
 
+        private static void CmdValidateFlow(string dir, string name)
+        {
+            Instance icm = Instance.Open(dir);
+            var tools = new List<string>();
+            foreach (Tool t in icm.Config.Tools) tools.Add(t.Name);
+
+            var files = new List<string>();
+            if (name != null) files.Add(icm.FlowPath(name));
+            else
+            {
+                string fdir = System.IO.Path.Combine(icm.Root, Conventions.FlowsDir);
+                if (System.IO.Directory.Exists(fdir))
+                {
+                    string[] ff = System.IO.Directory.GetFiles(fdir, "*.json");
+                    System.Array.Sort(ff, StringComparer.OrdinalIgnoreCase);
+                    files.AddRange(ff);
+                }
+            }
+            if (files.Count == 0) { Console.WriteLine("no flows found in " + dir); return; }
+
+            int problemsTotal = 0;
+            foreach (string f in files)
+            {
+                string id = System.IO.Path.GetFileNameWithoutExtension(f);
+                Flow flow;
+                try { flow = Flow.Load(f); }
+                catch (IcmError e) { Console.WriteLine("FAIL  " + id + ": " + e.Message); problemsTotal++; continue; }
+                List<string> problems = FlowLint.Check(flow, tools);
+                if (problems.Count == 0) Console.WriteLine("ok    " + id + " (" + flow.Nodes.Count + " node(s))");
+                else
+                {
+                    Console.WriteLine("FAIL  " + id + ":");
+                    foreach (string p in problems) Console.WriteLine("        " + p);
+                    problemsTotal += problems.Count;
+                }
+            }
+            if (problemsTotal > 0) Environment.Exit(2);
+        }
+
         private static void CmdValidate(string dir, string table)
         {
             Instance icm = Instance.Open(dir);
@@ -132,7 +171,7 @@ namespace Icm
             switch (s)
             {
                 case "open": case "chat": case "mcp": case "flow": case "validate":
-                case "docsearch": case "reindex": case "list": case "flows": case "gen": case "selftest":
+                case "docsearch": case "reindex": case "list": case "flows": case "validate-flow": case "gen": case "selftest":
                 case "help": case "-h": case "--help": return true;
                 default: return false;
             }
@@ -165,6 +204,13 @@ namespace Icm
                     string dir = Arg(args, 1), table = Arg(args, 2);
                     if (dir == null || table == null) throw new IcmError("usage: icm validate <dir> <table>");
                     CmdValidate(dir, table);
+                    break;
+                }
+                case "validate-flow":
+                {
+                    string dir = Arg(args, 1);
+                    if (dir == null) throw new IcmError("usage: icm validate-flow <dir> [name]");
+                    CmdValidateFlow(dir, Arg(args, 2));   // name optional: omit to lint every flow
                     break;
                 }
                 case "gen":
@@ -277,6 +323,7 @@ namespace Icm
             "  icm mcp   <dir>                 serve this ICM over MCP (stdio)\n" +
             "  icm flow  <dir> <name> [in...]  run an authored workflow (flows/<name>.json)\n" +
             "  icm validate <dir> <table>      run the oracle on a table\n" +
+            "  icm validate-flow <dir> [name]  lint flow(s): bad node kinds, missing fields, unknown tools\n" +
             "  icm docsearch <dir> <corpus> <query...>   hybrid search a built refdocs corpus\n" +
             "  icm reindex <dir>               regenerate manifest.json from files' <!--icm--> blocks\n" +
             "  icm list  <dir> [--group G] [--type T] [--json]   enumerate the KB catalog\n" +

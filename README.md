@@ -241,6 +241,7 @@ icm flows <dir>                 list the instance's workflows (the router's menu
 icm docsearch <dir> <corpus> <query...>           hybrid search a built refdocs corpus
 icm reindex <dir>               regenerate manifest.json from files' <!--icm--> metadata blocks
 icm validate <dir> <table>      run the oracle on schemas/<table>.json + samples/<table>.txt
+icm validate-flow <dir> [name]  lint a flow (or all flows): node kinds, fields, tool refs
 icm gen   <dir> <prompt...>     one raw generate call (smoke-test the model)
 icm selftest                    check the deterministic core (no model)
 ```

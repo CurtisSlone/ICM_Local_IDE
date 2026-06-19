@@ -128,6 +128,7 @@ icm chat <dir>                 dispatcher console (needs Ollama)
 icm mcp  <dir>                 serve the instance over MCP (stdio) - Claude connects here
 icm flow <dir> <name> [in...]  run an authored workflow (flows/<name>.json)
 icm validate <dir> <table>     run the oracle on schemas/<table>.json + samples/<table>.txt
+icm validate-flow <dir> [name] lint a flow (or all flows) before running it
 icm docsearch <dir> <corpus> [-k N] [--no-embed] <query...>   hybrid search a refdocs corpus
 icm reindex <dir>              regenerate manifest.json from files' <!--icm--> metadata blocks
 icm list  <dir> [--group G] [--type T] [--json]   enumerate the KB catalog

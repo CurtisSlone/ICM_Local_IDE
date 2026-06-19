@@ -29,6 +29,7 @@ namespace Icm
             fail += Check("slash command parse", SlashParse);
             fail += Check("slash redirect + fence strip", SlashRedirect);
             fail += Check("router gate", RouterGate);
+            fail += Check("flow lint", FlowLintCheck);
             fail += Check("embedder rank", EmbedderRank);
 
             Console.WriteLine(fail == 0 ? "selftest: ALL PASS" : ("selftest: " + fail + " FAILED"));
@@ -158,6 +159,26 @@ namespace Icm
             cands.Add(new KeyValuePair<string, double[]>("c", new double[] { 0.7, 0.7 }));
             List<string> top = Embedder.RankByVectors(q, cands, 2);
             return top.Count == 2 && top[0] == "a" && top[1] == "c";
+        }
+
+        private static bool FlowLintCheck()
+        {
+            var tools = new List<string>(new string[] { "csc" });
+
+            // valid: route -> tool(csc)
+            var good = new Flow();
+            good.Nodes.Add(new FlowNode { Id = "a", Kind = "route" });
+            var t1 = new FlowNode { Id = "b", Kind = "tool" }; t1.Extra["tool"] = "csc";
+            good.Nodes.Add(t1);
+            if (FlowLint.Check(good, tools).Count != 0) return false;
+
+            // invalid: unknown kind, tool naming a missing tool, empty loop with no until/max
+            var bad = new Flow();
+            bad.Nodes.Add(new FlowNode { Id = "x", Kind = "frobnicate" });
+            var t2 = new FlowNode { Id = "y", Kind = "tool" }; t2.Extra["tool"] = "nope"; bad.Nodes.Add(t2);
+            bad.Nodes.Add(new FlowNode { Id = "z", Kind = "loop" });
+            // expect >= 4 problems: unknown kind, unknown tool, empty loop body, loop missing until/max
+            return FlowLint.Check(bad, tools).Count >= 4;
         }
 
         private static bool RouterGate()
