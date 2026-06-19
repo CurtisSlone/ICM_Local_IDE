@@ -52,6 +52,40 @@ namespace Icm
             Console.WriteLine("  tools     : " + string.Join(", ", names.ToArray()));
         }
 
+        private static void CmdList(string dir, string group, string type, bool asJson)
+        {
+            Instance icm = Instance.Open(dir);
+            if (icm.Manifest == null) { Console.Error.WriteLine("no manifest.json in " + icm.Root); return; }
+            var entries = new List<Entry>();
+            foreach (Entry e in icm.Manifest.Entries)
+            {
+                if (group != null && !string.Equals(e.Group, group, StringComparison.OrdinalIgnoreCase)) continue;
+                if (type != null && !string.Equals(e.DocType, type, StringComparison.OrdinalIgnoreCase)) continue;
+                entries.Add(e);
+            }
+            if (asJson)
+            {
+                var arr = new List<object>();
+                foreach (Entry e in entries)
+                    arr.Add(Json.Obj("id", e.Id, "title", e.Title, "group", e.Group, "doc_type", e.DocType, "path", e.Path, "summary", e.Summary, "keywords", e.Keywords.ToArray()));
+                Console.WriteLine(Json.SerializePretty(arr.ToArray()));
+                return;
+            }
+            entries.Sort(delegate(Entry a, Entry b)
+            {
+                int g = string.Compare(a.Group, b.Group, StringComparison.OrdinalIgnoreCase);
+                return g != 0 ? g : string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+            });
+            string cur = " ";
+            foreach (Entry e in entries)
+            {
+                string g = e.Group.Length > 0 ? e.Group : "(top level)";
+                if (g != cur) { Console.WriteLine((cur == " " ? "" : "\n") + "[" + g + "]"); cur = g; }
+                Console.WriteLine("  " + e.Id.PadRight(24) + " " + e.Summary);
+            }
+            Console.WriteLine("\n" + entries.Count + " entr" + (entries.Count == 1 ? "y" : "ies"));
+        }
+
         private static void CmdValidate(string dir, string table)
         {
             Instance icm = Instance.Open(dir);
@@ -92,9 +126,31 @@ namespace Icm
 
         private static string Arg(string[] args, int i) { return (i < args.Length) ? args[i] : null; }
 
+        // The set of recognized verbs; anything else that names a directory is the `icm <dir>` shorthand.
+        private static bool IsCommand(string s)
+        {
+            switch (s)
+            {
+                case "open": case "chat": case "mcp": case "flow": case "validate":
+                case "docsearch": case "reindex": case "list": case "gen": case "selftest":
+                case "help": case "-h": case "--help": return true;
+                default: return false;
+            }
+        }
+
         private static void Run(string[] args)
         {
             string cmd = args.Length > 0 ? args[0] : "";
+
+            // VSCode-style shorthand: `icm <dir>` opens the operator console on that directory. The path
+            // is relative to the terminal's working directory, or absolute. Recognized commands win.
+            if (cmd.Length > 0 && !IsCommand(cmd) && System.IO.Directory.Exists(cmd))
+            {
+                Instance icm = Instance.Open(cmd);
+                ConsoleChat.Run(icm, EffectiveUrl(icm));
+                return;
+            }
+
             switch (cmd)
             {
                 case "open":
@@ -170,6 +226,20 @@ namespace Icm
                     Indexer.Reindex(icm, delegate(string s) { Console.Error.WriteLine("  - " + s); });
                     break;
                 }
+                case "list":
+                {
+                    string dir = Arg(args, 1);
+                    if (dir == null) throw new IcmError("usage: icm list <dir> [--group G] [--type T] [--json]");
+                    string group = null, type = null; bool asJson = false;
+                    for (int i = 2; i < args.Length; i++)
+                    {
+                        if (args[i] == "--group" && i + 1 < args.Length) group = args[++i];
+                        else if (args[i] == "--type" && i + 1 < args.Length) type = args[++i];
+                        else if (args[i] == "--json") asJson = true;
+                    }
+                    CmdList(dir, group, type, asJson);
+                    break;
+                }
                 case "selftest":
                     if (SelfTest.RunAll() != 0) Environment.Exit(2);
                     break;
@@ -186,6 +256,7 @@ namespace Icm
 
         private const string Usage =
             "icm - ICM host\n" +
+            "  icm <dir>                       open the operator console on an ICM dir (VSCode-style; rel or abs)\n" +
             "  icm open  <dir>                 load + summarize an ICM instance\n" +
             "  icm chat  <dir>                 operator console (dispatcher; needs Ollama)\n" +
             "  icm mcp   <dir>                 serve this ICM over MCP (stdio)\n" +
@@ -193,6 +264,7 @@ namespace Icm
             "  icm validate <dir> <table>      run the oracle on a table\n" +
             "  icm docsearch <dir> <corpus> <query...>   hybrid search a built refdocs corpus\n" +
             "  icm reindex <dir>               regenerate manifest.json from files' <!--icm--> blocks\n" +
+            "  icm list  <dir> [--group G] [--type T] [--json]   enumerate the KB catalog\n" +
             "  icm gen   <dir> <prompt...>     one raw generate call\n" +
             "  icm selftest                    check the deterministic core (no model)\n" +
             "\n" +

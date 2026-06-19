@@ -46,6 +46,54 @@
       ]
     },
     {
+      "id": "concurrency-inbox",
+      "title": "Concurrency and async in-box (C# 5 + .NET FW 4.8)",
+      "path": "reference/dotnet/concurrency-inbox.md",
+      "summary": "What async/concurrency APIs are available under C# 5 and the in-box framework (Task, async/await, Parallel, BlockingCollection, SemaphoreSlim, Lazy), what is NOT (ValueTask, Channel, Dataflow, IAsyncEnumerable, async Main), and the async rules a model gets wrong.",
+      "doc_type": "reference",
+      "group": "dotnet",
+      "keywords": [
+        "async",
+        "await",
+        "Task",
+        "CancellationToken",
+        "Parallel",
+        "PLINQ",
+        "BlockingCollection",
+        "SemaphoreSlim",
+        "ConcurrentDictionary",
+        "Lazy",
+        "ValueTask",
+        "Channel",
+        "Dataflow",
+        "async void",
+        "deadlock",
+        "ConfigureAwait"
+      ]
+    },
+    {
+      "id": "in-box-assemblies",
+      "title": "Importable in-box assemblies (no SDK / NuGet)",
+      "path": "reference/dotnet/in-box-assemblies.md",
+      "summary": "Which .NET Framework assemblies the in-box csc can reference here, what each unlocks, and the exact -reference: line - plus the high-value ones (WMI, zip, GDI+, WMI) and what is NOT present (WPF, ValueTask, Channels, Dataflow).",
+      "doc_type": "reference",
+      "group": "dotnet",
+      "keywords": [
+        "reference assembly",
+        "DllImport",
+        "csc reference",
+        "System.Management",
+        "WMI",
+        "System.IO.Compression",
+        "JavaScriptSerializer",
+        "System.Drawing",
+        "WPF",
+        "ValueTask",
+        "no NuGet",
+        "GAC"
+      ]
+    },
+    {
       "id": "host-conventions",
       "title": "ICM host conventions (tools, flows, schemas)",
       "path": "reference/host-conventions.md",
@@ -89,6 +137,399 @@
       ]
     },
     {
+      "id": "ui-pinvoke",
+      "title": "Win32 P/Invoke for WinForms polish",
+      "path": "reference/win32/ui-pinvoke.md",
+      "summary": "P/Invoke signatures the host GUI actually uses (uxtheme SetWindowTheme, shell32 SHGetFileInfo + IFileOpenDialog folder picker, user32 DestroyIcon) plus common additions (dwmapi dark title bar, GetAsyncKeyState) - exact DllImport declarations for a WinForms tool.",
+      "doc_type": "reference",
+      "group": "win32",
+      "keywords": [
+        "P/Invoke",
+        "DllImport",
+        "WinForms",
+        "SetWindowTheme",
+        "uxtheme",
+        "SHGetFileInfo",
+        "shell32",
+        "IFileOpenDialog",
+        "folder picker",
+        "DestroyIcon",
+        "DwmSetWindowAttribute",
+        "dark title bar",
+        "Marshal",
+        "StructLayout"
+      ]
+    },
+    {
+      "id": "chain-of-responsibility",
+      "title": "Chain of Responsibility pattern (pass a request along a chain of handlers)",
+      "path": "patterns/behavioral/chain-of-responsibility.md",
+      "summary": "Decouples a sender from its receivers by giving each handler a chance to process a request or forward it to the next handler in the chain.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "chain of responsibility",
+        "CoR",
+        "handler chain",
+        "IHandler",
+        "BaseHandler",
+        "successor",
+        "pipeline",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "command",
+      "title": "Command pattern (encapsulate a request as an object)",
+      "path": "patterns/behavioral/command.md",
+      "summary": "Wraps a request and its receiver in an object so invokers can parameterize, queue, log, undo, and macro requests without knowing what they do.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "command",
+        "ICommand",
+        "invoker",
+        "receiver",
+        "undo",
+        "MacroCommand",
+        "RemoteControl",
+        "NoCommand",
+        "null object",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "iterator",
+      "title": "Iterator pattern (sequential access without exposing the collection)",
+      "path": "patterns/behavioral/iterator.md",
+      "summary": "Provides a uniform way to traverse the elements of an aggregate without exposing how it stores them, so a client can walk an ArrayList and an array through the same interface.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "iterator",
+        "IEnumerable",
+        "IEnumerator",
+        "GetEnumerator",
+        "MoveNext",
+        "Current",
+        "aggregate",
+        "traversal",
+        "foreach",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "mediator",
+      "title": "Mediator pattern (centralize how a set of objects interact)",
+      "path": "patterns/behavioral/mediator.md",
+      "summary": "Routes communication between colleagues through a single mediator object so the colleagues stay decoupled and the interaction logic lives in one place.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "mediator",
+        "colleague",
+        "Mediator",
+        "Colleague",
+        "ManagerMediator",
+        "decoupling",
+        "hub",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "observer",
+      "title": "Observer pattern (notify dependents when subject state changes)",
+      "path": "patterns/behavioral/observer.md",
+      "summary": "Defines a one-to-many dependency so that when one subject changes state all its registered observers are notified, here using .NET's IObservable<T>/IObserver<T>.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "observer",
+        "publish subscribe",
+        "pub sub",
+        "IObservable",
+        "IObserver",
+        "Subscribe",
+        "OnNext",
+        "IDisposable",
+        "Unsubscriber",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "state",
+      "title": "State pattern (object changes behavior when its internal state changes)",
+      "path": "patterns/behavioral/state.md",
+      "summary": "Lets an object alter its behavior when its internal state changes by delegating each operation to a separate state object, replacing sprawling conditional logic.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "state",
+        "IState",
+        "GumballMachine",
+        "state machine",
+        "state transition",
+        "NoQuarterState",
+        "HasQuarterState",
+        "SoldState",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "strategy",
+      "title": "Strategy pattern (interchangeable algorithms behind an interface)",
+      "path": "patterns/behavioral/strategy.md",
+      "summary": "Defines a family of algorithms, encapsulates each behind a common interface, and lets the context swap them at runtime via composition instead of inheritance.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "strategy",
+        "IFlyBehaviour",
+        "IQuackBehaviour",
+        "duck",
+        "behavior composition",
+        "favor composition over inheritance",
+        "pluggable algorithm",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "template-method",
+      "title": "Template Method pattern (fix an algorithm skeleton, defer steps to subclasses)",
+      "path": "patterns/behavioral/template-method.md",
+      "summary": "Defines the skeleton of an algorithm in a base method while letting subclasses override specific steps without changing the algorithm's structure.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "template method",
+        "Beverage",
+        "Coffee",
+        "Tea",
+        "hook method",
+        "abstract method",
+        "algorithm skeleton",
+        "IComparable",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "visitor",
+      "title": "Visitor pattern (add operations to an object structure without changing it)",
+      "path": "patterns/behavioral/visitor.md",
+      "summary": "Represents an operation to perform on the elements of an object structure, letting you add new operations without modifying the element classes via double dispatch.",
+      "doc_type": "pattern",
+      "group": "behavioral",
+      "keywords": [
+        "visitor",
+        "IUnitVisitor",
+        "Unit",
+        "Apartment",
+        "double dispatch",
+        "Accept",
+        "object structure",
+        "composite traversal",
+        "behavioral pattern"
+      ]
+    },
+    {
+      "id": "async-await-basics",
+      "title": "Async/await basics (Task-returning methods done right)",
+      "path": "patterns/concurrency/async-await-basics.md",
+      "summary": "The C# 5 async method shape - async Task / async Task<T>, Task.Run for CPU-bound work, Task.WhenAll, awaiting IO - plus the anti-patterns (no async void, never .Result/.Wait() on a UI context, ConfigureAwait(false) in library code).",
+      "doc_type": "pattern",
+      "group": "concurrency",
+      "keywords": [
+        "async",
+        "await",
+        "Task",
+        "Task<T>",
+        "Task.Run",
+        "Task.WhenAll",
+        "ConfigureAwait",
+        "async void",
+        "deadlock",
+        ".Result",
+        ".Wait()",
+        "CPU-bound",
+        "IO-bound"
+      ]
+    },
+    {
+      "id": "cancellation",
+      "title": "Cooperative cancellation (CancellationToken / CancellationTokenSource)",
+      "path": "patterns/concurrency/cancellation.md",
+      "summary": "Cooperatively cancel async and loop work with CancellationToken/CancellationTokenSource: check the token in loops, pass it into Task.Run and Task.Delay, and use new CancellationTokenSource(timeoutMs) for timeouts.",
+      "doc_type": "pattern",
+      "group": "concurrency",
+      "keywords": [
+        "CancellationToken",
+        "CancellationTokenSource",
+        "cooperative cancellation",
+        "ThrowIfCancellationRequested",
+        "IsCancellationRequested",
+        "timeout",
+        "Cancel",
+        "OperationCanceledException",
+        "Task.Run",
+        "Task.Delay"
+      ]
+    },
+    {
+      "id": "parallel-aggregate",
+      "title": "Parallel aggregate (fan out over chunks, merge results)",
+      "path": "patterns/concurrency/parallel-aggregate.md",
+      "summary": "Split a large input into chunks, process them with Parallel.For/ForEach across cores, and merge the per-chunk results with Interlocked counters or a ConcurrentBag<T> - e.g. scanning a big byte[] in parallel.",
+      "doc_type": "pattern",
+      "group": "concurrency",
+      "keywords": [
+        "Parallel.For",
+        "Parallel.ForEach",
+        "data parallelism",
+        "Interlocked",
+        "ConcurrentBag",
+        "thread-local",
+        "aggregate",
+        "partition",
+        "chunk",
+        "byte[] scan",
+        "PLINQ"
+      ]
+    },
+    {
+      "id": "producer-consumer",
+      "title": "Producer/consumer with BlockingCollection<T> (the in-box channel)",
+      "path": "patterns/concurrency/producer-consumer.md",
+      "summary": "Hand work from producers to consumers with BlockingCollection<T> - the in-box stand-in for Channel<T> (which is NOT available) - using Add/CompleteAdding on the producer side and GetConsumingEnumerable on the consumer side.",
+      "doc_type": "pattern",
+      "group": "concurrency",
+      "keywords": [
+        "producer",
+        "consumer",
+        "BlockingCollection",
+        "GetConsumingEnumerable",
+        "CompleteAdding",
+        "bounded queue",
+        "Channel",
+        "backpressure",
+        "ConcurrentQueue",
+        "pipeline"
+      ]
+    },
+    {
+      "id": "throttle-with-semaphore",
+      "title": "Throttle concurrency with SemaphoreSlim (bound simultaneous work)",
+      "path": "patterns/concurrency/throttle-with-semaphore.md",
+      "summary": "Cap how many operations run at once with SemaphoreSlim(maxConcurrent): await WaitAsync() before the work and Release() in a finally, so you bound simultaneous file/process/network calls.",
+      "doc_type": "pattern",
+      "group": "concurrency",
+      "keywords": [
+        "SemaphoreSlim",
+        "WaitAsync",
+        "Release",
+        "throttle",
+        "concurrency limit",
+        "bound concurrency",
+        "rate limit",
+        "max parallel",
+        "finally",
+        "Task.WhenAll"
+      ]
+    },
+    {
+      "id": "abstract-factory",
+      "title": "Abstract Factory pattern (create families of related objects)",
+      "path": "patterns/creational/abstract-factory.md",
+      "summary": "Provides an interface for creating a whole family of related products without naming their concrete classes, so swapping the factory swaps the entire family.",
+      "doc_type": "pattern",
+      "group": "creational",
+      "keywords": [
+        "abstract factory",
+        "IIngredientsFactory",
+        "NyIngredientsFactory",
+        "ChicagoIngredientsFactory",
+        "IDough",
+        "ICheese",
+        "ISauce",
+        "IVeggies",
+        "IClam",
+        "product family",
+        "creational pattern"
+      ]
+    },
+    {
+      "id": "builder",
+      "title": "Builder pattern (step-by-step construction of a complex object)",
+      "path": "patterns/creational/builder.md",
+      "summary": "Separates the construction of a complex object from its representation so the same build steps can produce different objects, driven by an optional director.",
+      "doc_type": "pattern",
+      "group": "creational",
+      "keywords": [
+        "builder",
+        "director",
+        "IBuilder",
+        "Cook",
+        "Hamburger",
+        "MyHamburgerBuilder",
+        "WifesHamburgerBuilder",
+        "creational pattern",
+        "step-by-step construction"
+      ]
+    },
+    {
+      "id": "factory-method",
+      "title": "Factory Method pattern (defer product creation to subclasses)",
+      "path": "patterns/creational/factory-method.md",
+      "summary": "Defines a creator with a fixed algorithm that calls an abstract factory method, letting each subclass decide which concrete product to instantiate.",
+      "doc_type": "pattern",
+      "group": "creational",
+      "keywords": [
+        "factory method",
+        "PizzaFactory",
+        "NyPizzaFactory",
+        "ChicagoPizzaFactory",
+        "Pizza",
+        "creator",
+        "creational pattern",
+        "template plus creation"
+      ]
+    },
+    {
+      "id": "prototype",
+      "title": "Prototype pattern (create new objects by cloning an existing one)",
+      "path": "patterns/creational/prototype.md",
+      "summary": "Creates new objects by copying an existing instance through a clone operation, so the client produces objects without depending on their concrete classes.",
+      "doc_type": "pattern",
+      "group": "creational",
+      "keywords": [
+        "prototype",
+        "clone",
+        "ICloneable",
+        "IFigure",
+        "Circle",
+        "Rectangle",
+        "copy constructor",
+        "creational pattern"
+      ]
+    },
+    {
+      "id": "singleton",
+      "title": "Singleton pattern (one shared instance, lazily and safely created)",
+      "path": "patterns/creational/singleton.md",
+      "summary": "Ensures a class has exactly one instance and gives a global access point to it, using Lazy<T> for thread-safe lazy initialization.",
+      "doc_type": "pattern",
+      "group": "creational",
+      "keywords": [
+        "singleton",
+        "ChocolateBoiler",
+        "Lazy<T>",
+        "GetInstance",
+        "thread-safe",
+        "private constructor",
+        "creational pattern",
+        "global access point"
+      ]
+    },
+    {
       "id": "disposable-pattern",
       "title": "The IDisposable / Dispose pattern (deterministic cleanup)",
       "path": "patterns/csharp-idioms/disposable-pattern.md",
@@ -105,6 +546,369 @@
         "unmanaged resources",
         "SafeHandle",
         "deterministic cleanup"
+      ]
+    },
+    {
+      "id": "adapter",
+      "title": "Adapter pattern (wrap an incompatible type to match an expected interface)",
+      "path": "patterns/structural/adapter.md",
+      "summary": "Wraps an object with an incompatible interface in an adapter that exposes the interface a client expects, letting otherwise unusable classes work together.",
+      "doc_type": "pattern",
+      "group": "structural",
+      "keywords": [
+        "adapter",
+        "wrapper",
+        "object adapter",
+        "IDuck",
+        "ITurkey",
+        "TurkeyAdapter",
+        "interface compatibility",
+        "structural pattern"
+      ]
+    },
+    {
+      "id": "bridge",
+      "title": "Bridge pattern (split an abstraction from its implementation so both vary independently)",
+      "path": "patterns/structural/bridge.md",
+      "summary": "Separates an abstraction (what) from its implementation (how) by composition so the two hierarchies can be extended independently instead of multiplying subclasses.",
+      "doc_type": "pattern",
+      "group": "structural",
+      "keywords": [
+        "bridge",
+        "abstraction implementation split",
+        "IWeapon",
+        "IEnchantment",
+        "Sword",
+        "Hammer",
+        "composition over inheritance",
+        "structural pattern"
+      ]
+    },
+    {
+      "id": "composite",
+      "title": "Composite pattern (treat individual objects and groups of objects uniformly)",
+      "path": "patterns/structural/composite.md",
+      "summary": "Builds a tree of objects where leaves and containers share one type, so client code can operate on a single item or a whole nested structure with the same call.",
+      "doc_type": "pattern",
+      "group": "structural",
+      "keywords": [
+        "composite",
+        "tree structure",
+        "part-whole hierarchy",
+        "MenuComponent",
+        "Menu",
+        "MenuItem",
+        "leaf and composite",
+        "structural pattern"
+      ]
+    },
+    {
+      "id": "decorator",
+      "title": "Decorator pattern (add responsibilities to an object by wrapping it at runtime)",
+      "path": "patterns/structural/decorator.md",
+      "summary": "Wraps an object in one or more decorators that share its type and add behaviour, letting you layer responsibilities at runtime instead of subclassing every combination.",
+      "doc_type": "pattern",
+      "group": "structural",
+      "keywords": [
+        "decorator",
+        "wrapper",
+        "Beverage",
+        "CondimentDecorator",
+        "Espresso",
+        "MochaCondiment",
+        "WhipCondiment",
+        "runtime composition",
+        "structural pattern"
+      ]
+    },
+    {
+      "id": "facade",
+      "title": "Facade pattern (one simple entry point over a complex subsystem)",
+      "path": "patterns/structural/facade.md",
+      "summary": "Provides a single high-level interface that orchestrates several subsystem classes, so clients call one method instead of wiring the subsystem themselves.",
+      "doc_type": "pattern",
+      "group": "structural",
+      "keywords": [
+        "facade",
+        "subsystem wrapper",
+        "HomeTheatreFacade",
+        "Dimmer",
+        "DvdPlayer",
+        "Dvd",
+        "simplified interface",
+        "structural pattern"
+      ]
+    },
+    {
+      "id": "flyweight",
+      "title": "Flyweight pattern (share immutable instances instead of allocating duplicates)",
+      "path": "patterns/structural/flyweight.md",
+      "summary": "Caches and reuses shared instances through a factory so that many logical objects of the same kind are backed by one physical object, cutting allocation.",
+      "doc_type": "pattern",
+      "group": "structural",
+      "keywords": [
+        "flyweight",
+        "object sharing",
+        "instance cache",
+        "BeverageFlyweightFactory",
+        "IBeverage",
+        "BeverageType",
+        "memory optimization",
+        "structural pattern"
+      ]
+    },
+    {
+      "id": "proxy",
+      "title": "Proxy pattern (a stand-in that controls access to a real object)",
+      "path": "patterns/structural/proxy.md",
+      "summary": "Puts a placeholder in front of a real object that shares its interface and controls access to it, here deferring the expensive real object's creation until first use (virtual proxy).",
+      "doc_type": "pattern",
+      "group": "structural",
+      "keywords": [
+        "proxy",
+        "virtual proxy",
+        "lazy loading",
+        "placeholder",
+        "Image",
+        "ProxyImage",
+        "RealImage",
+        "access control",
+        "structural pattern"
+      ]
+    },
+    {
+      "id": "generate-compile-repair",
+      "title": "Generate, compile, repair until it builds (the loop flow)",
+      "path": "recipes/automation/generate-compile-repair.md",
+      "summary": "How the host turns a weak local model into a reliable code generator: a loop flow that generates C#, compiles it with the csc_check oracle, and feeds the compiler errors back into the next attempt until exit 0.",
+      "doc_type": "recipe",
+      "group": "automation",
+      "keywords": [
+        "generate verify repair",
+        "loop flow",
+        "csc_check",
+        "compile",
+        "oracle",
+        "assembly line",
+        "write_csharp",
+        "write_grounded",
+        "self-correct"
+      ]
+    },
+    {
+      "id": "patch-bytes-at-offset",
+      "title": "Patch bytes at an offset, with a backup",
+      "path": "recipes/file-io/patch-bytes-at-offset.md",
+      "summary": "Overwrite bytes at a known offset in a binary file after copying the original to a .bak - the safe write half of binary editing.",
+      "doc_type": "recipe",
+      "group": "file-io",
+      "keywords": [
+        "patch bytes",
+        "write at offset",
+        "binary edit",
+        "backup",
+        "WriteAllBytes",
+        "File.Copy",
+        "hex patch"
+      ]
+    },
+    {
+      "id": "scan-bytes-in-file",
+      "title": "Scan a file for a byte pattern (all offsets)",
+      "path": "recipes/file-io/scan-bytes-in-file.md",
+      "summary": "Read a file as bytes and find every offset where a byte pattern occurs, plus a hex-string parser - the basis for locating data in a binary asset or save file.",
+      "doc_type": "recipe",
+      "group": "file-io",
+      "keywords": [
+        "byte scan",
+        "find bytes",
+        "pattern search",
+        "offset",
+        "binary file",
+        "ReadAllBytes",
+        "hex string",
+        "signature scan"
+      ]
+    },
+    {
+      "id": "enumerate-process-modules",
+      "title": "Enumerate a running process's loaded modules",
+      "path": "recipes/process-memory/enumerate-process-modules.md",
+      "summary": "List the modules (DLLs/exe) a running process has loaded and their base addresses using System.Diagnostics.Process - the managed starting point for inspecting a target process.",
+      "doc_type": "recipe",
+      "group": "process-memory",
+      "keywords": [
+        "process",
+        "modules",
+        "base address",
+        "ProcessModule",
+        "GetProcessesByName",
+        "MainModule",
+        "WMI",
+        "Win32_Process",
+        "inspect process"
+      ]
+    },
+    {
+      "id": "drive-external-tool",
+      "title": "Drive an external CLI tool and capture its output",
+      "path": "recipes/tooling/drive-external-tool.md",
+      "summary": "Run an external executable (dumpbin, sigcheck, a Sysinternals tool) with arguments, capture stdout/stderr without deadlocking, and enforce a timeout - the pattern the host's own ToolRunner uses.",
+      "doc_type": "recipe",
+      "group": "tooling",
+      "keywords": [
+        "Process",
+        "ProcessStartInfo",
+        "RedirectStandardOutput",
+        "capture output",
+        "stdout",
+        "stderr",
+        "timeout",
+        "external tool",
+        "deadlock",
+        "drive cli"
+      ]
+    },
+    {
+      "id": "console-app",
+      "title": "Minimal console app (csc -t:exe)",
+      "path": "scaffold/csharp/console-app.md",
+      "summary": "A ready-to-fill console app with a static Main built by the in-box csc as -t:exe, plus a build.ps1 (modeled on the host's) that globs *.cs and pins -langversion:5.",
+      "doc_type": "scaffold",
+      "group": "csharp",
+      "keywords": [
+        "console",
+        "Main",
+        "csc",
+        "target exe",
+        "build.ps1",
+        "C# 5",
+        "in-box",
+        "entry point",
+        "args"
+      ]
+    },
+    {
+      "id": "library",
+      "title": "Class library (csc -t:library)",
+      "path": "scaffold/csharp/library.md",
+      "summary": "A ready-to-fill class library (no Main) compiled to a DLL with the in-box csc as -t:library, with a public type and the exact reference line.",
+      "doc_type": "scaffold",
+      "group": "csharp",
+      "keywords": [
+        "library",
+        "DLL",
+        "csc",
+        "target library",
+        "class library",
+        "C# 5",
+        "in-box",
+        "no Main",
+        "reference"
+      ]
+    },
+    {
+      "id": "pinvoke-wrapper",
+      "title": "P/Invoke wrapper class (DllImport + managed wrapper)",
+      "path": "scaffold/csharp/pinvoke-wrapper.md",
+      "summary": "A P/Invoke wrapper: a private [DllImport] native declaration plus a clean public managed method, shown with a harmless kernel32 Beep and a SafeHandle-based file-handle example with proper release.",
+      "doc_type": "scaffold",
+      "group": "csharp",
+      "keywords": [
+        "P/Invoke",
+        "DllImport",
+        "kernel32",
+        "Beep",
+        "SafeHandle",
+        "SafeFileHandle",
+        "CreateFile",
+        "Marshal",
+        "GetLastWin32Error",
+        "wrapper",
+        "C# 5",
+        "interop"
+      ]
+    },
+    {
+      "id": "winforms-app",
+      "title": "Minimal WinForms app (csc -t:winexe)",
+      "path": "scaffold/csharp/winforms-app.md",
+      "summary": "A single-window WinForms app built with the in-box csc as -t:winexe: [STAThread] Main with EnableVisualStyles and Application.Run, a Form subclass with one control wired entirely in code (no designer).",
+      "doc_type": "scaffold",
+      "group": "csharp",
+      "keywords": [
+        "WinForms",
+        "winexe",
+        "STAThread",
+        "Application.Run",
+        "EnableVisualStyles",
+        "Form",
+        "Button",
+        "no designer",
+        "System.Windows.Forms",
+        "System.Drawing",
+        "C# 5"
+      ]
+    },
+    {
+      "id": "advanced-function",
+      "title": "Advanced function template (CmdletBinding + pipeline)",
+      "path": "scaffold/powershell/advanced-function.md",
+      "summary": "A PS 5.1 advanced function template: [CmdletBinding()], typed and validated params, pipeline input via a process block, and begin/process/end - no ternary, no ??, no chain operators.",
+      "doc_type": "scaffold",
+      "group": "powershell",
+      "keywords": [
+        "PowerShell",
+        "advanced function",
+        "CmdletBinding",
+        "param",
+        "ValidateSet",
+        "ValidateRange",
+        "ValueFromPipeline",
+        "begin process end",
+        "pipeline",
+        "PS 5.1"
+      ]
+    },
+    {
+      "id": "host-tool",
+      "title": "Host tool (ToolRunner stdin contract)",
+      "path": "scaffold/powershell/host-tool.md",
+      "summary": "A PowerShell instance-tool skeleton fitting this host's ToolRunner contract: read raw stdin bytes, strip a leading UTF-8 BOM, UTF-8 decode, optionally strip a markdown code fence, do the work, exit 0 on success / non-zero on failure.",
+      "doc_type": "scaffold",
+      "group": "powershell",
+      "keywords": [
+        "host tool",
+        "ToolRunner",
+        "stdin",
+        "OpenStandardInput",
+        "BOM",
+        "UTF-8",
+        "code fence",
+        "exit code",
+        "csc_check",
+        "instance tool",
+        "PS 5.1"
+      ]
+    },
+    {
+      "id": "module",
+      "title": "PowerShell module (.psm1 + .psd1 manifest)",
+      "path": "scaffold/powershell/module.md",
+      "summary": "A .psm1 module skeleton with one exported advanced function plus a matching .psd1 manifest skeleton, both PS 5.1 and both parse clean.",
+      "doc_type": "scaffold",
+      "group": "powershell",
+      "keywords": [
+        "PowerShell",
+        "module",
+        "psm1",
+        "psd1",
+        "manifest",
+        "Export-ModuleMember",
+        "RootModule",
+        "FunctionsToExport",
+        "PS 5.1",
+        "advanced function"
       ]
     }
   ]

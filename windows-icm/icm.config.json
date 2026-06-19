@@ -29,6 +29,7 @@
       "timeout": 30
     },
     { "name": "write_csharp", "kind": "flow", "flow": "csharp", "description": "Generate C# 5 code grounded in the KB, compile it, and repair until it builds." },
+    { "name": "write_grounded", "kind": "flow", "flow": "write_grounded", "description": "Generate C# 5 code grounded in EVERY relevant KB entry (multi-pick), compile it, and repair until it builds." },
     { "name": "write_powershell", "kind": "flow", "flow": "powershell", "description": "Generate PowerShell grounded in the KB, parse-check it, and repair until it parses." }
   ]
 }

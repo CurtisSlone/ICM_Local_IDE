@@ -12,7 +12,7 @@ namespace Icm
             Console.WriteLine("ICM operator console - '" + icm.Config.Name + "'");
             Console.WriteLine("  dispatch seat: " + icm.Config.DispatchModel() +
                               "   generate seat: " + icm.Config.Models.Generate + "   ollama: " + url);
-            Console.WriteLine("  type a request, 'help', or 'quit'. (Ctrl-Z then Enter to exit)\n");
+            Console.WriteLine("  chat normally; use slash commands to act ('/help' for the list, 'quit' to exit).\n");
 
             // Status trace goes to stderr so stdout carries only the conversation.
             var d = new Dispatcher(icm, url, delegate(string s) { Console.Error.WriteLine("  - " + s); });
@@ -29,6 +29,7 @@ namespace Icm
 
                 TurnResult r = d.Turn(line);
                 if (r.Intent == Conventions.Intent.Quit) break;
+                if (r.Intent == "clear") { Console.Clear(); continue; }
                 if (r.IsError) Console.Error.WriteLine("\n" + r.Text + "\n");
                 else Console.WriteLine("\n" + r.Text + "\n");
             }

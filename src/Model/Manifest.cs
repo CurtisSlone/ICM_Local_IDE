@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace Icm
 {
@@ -60,6 +61,47 @@ namespace Icm
         {
             foreach (Entry e in Entries) if (e.Id == id) return e;
             return null;
+        }
+
+        // --- enumeration: the deterministic, host-owned views the model proposes against ---
+
+        // Distinct, sorted sub-folder groups present in the index.
+        public List<string> Groups()
+        {
+            var seen = new List<string>();
+            foreach (Entry e in Entries)
+                if (e.Group.Length > 0 && !seen.Contains(e.Group)) seen.Add(e.Group);
+            seen.Sort(StringComparer.OrdinalIgnoreCase);
+            return seen;
+        }
+
+        public List<Entry> ByGroup(string group)
+        {
+            var o = new List<Entry>();
+            foreach (Entry e in Entries) if (string.Equals(e.Group, group, StringComparison.OrdinalIgnoreCase)) o.Add(e);
+            return o;
+        }
+
+        public List<Entry> ByDocType(string docType)
+        {
+            var o = new List<Entry>();
+            foreach (Entry e in Entries) if (string.Equals(e.DocType, docType, StringComparison.OrdinalIgnoreCase)) o.Add(e);
+            return o;
+        }
+
+        // A compact "id [group]: summary" listing, optionally filtered by group and/or doc_type.
+        // Null/empty filter means "no filter on that field". This is the catalog the model enumerates.
+        public string Catalog(string group, string docType)
+        {
+            var sb = new StringBuilder();
+            foreach (Entry e in Entries)
+            {
+                if (!string.IsNullOrEmpty(group) && !string.Equals(e.Group, group, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.IsNullOrEmpty(docType) && !string.Equals(e.DocType, docType, StringComparison.OrdinalIgnoreCase)) continue;
+                string g = e.Group.Length > 0 ? " [" + e.Group + "]" : "";
+                sb.Append("- " + e.Id + g + ": " + e.Summary + "\n");
+            }
+            return sb.ToString().TrimEnd();
         }
     }
 }

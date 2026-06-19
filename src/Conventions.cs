@@ -11,6 +11,7 @@ namespace Icm
         public const string ConfigFile = "icm.config.json";
         public const string ManifestFile = "manifest.json";
         public const string SystemFile = "SYSTEM.md";
+        public const string NotesFile = "NOTES.md";   // persistent session memory the chat reads/appends
 
         // Sub-directories (relative to the instance root).
         public const string SchemasDir = "schemas";
@@ -73,6 +74,8 @@ namespace Icm
             public const string Loop = "loop";   // repeat a body of nodes until a state key is truthy, or N times
             public const string Branch = "branch"; // run `then` or `else` body based on a state-key test
             public const string Search = "search"; // hybrid docs search over a refdocs corpus -> context
+            public const string RouteMany = "route_many"; // constrained multi-pick of relevant manifest entry ids
+            public const string Catalog = "catalog";      // write the (optionally filtered) manifest index to a state key
         }
     }
 }

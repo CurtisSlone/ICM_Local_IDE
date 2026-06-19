@@ -45,6 +45,9 @@ namespace Icm
         public static readonly Color Gutter = Color.FromArgb(40, 40, 42);
         public static readonly Color Good = Color.FromArgb(106, 191, 105);
         public static readonly Color Bad = Color.FromArgb(240, 113, 100);
+        public static readonly Color CodeBg = Color.FromArgb(45, 45, 48);   // chat code-block background
+        public static readonly Color CodeFg = Color.FromArgb(215, 200, 160); // chat code text
+        public static readonly Color Heading = Color.FromArgb(236, 236, 236);// chat heading text
     }
 
     // Darkens menus, toolbars, and the status strip (the ProfessionalRenderer reads this).
@@ -579,6 +582,22 @@ namespace Icm
             if (e.Node.Nodes.Count == 1 && e.Node.Nodes[0].Tag == null) PopulateDir(e.Node, path);
         }
 
+        // Open a file by absolute path into the editor (used when chat writes a file via "> path").
+        private void OpenFilePath(string full)
+        {
+            if (full == null || !File.Exists(full)) return;
+            if (!ConfirmDiscardIfDirty()) return;
+            try
+            {
+                loading = true; editor.Text = File.ReadAllText(full); loading = false;
+                editor.SelectionStart = 0; editor.SelectionLength = 0;
+                currentFile = full; dirty = false;
+                gutter.Invalidate(); UpdateTitle(); UpdateCaret();
+                SetStatus("Opened " + full, Theme.Good);
+            }
+            catch (Exception e) { loading = false; SetStatus("Open failed: " + e.Message, Theme.Bad); }
+        }
+
         private void OpenNode(TreeNode node)
         {
             if (node == null) return;
@@ -779,11 +798,13 @@ namespace Icm
                 {
                     thinkTimer.Stop();
                     if (turnCancelled) AppendChat("icm", "(cancelled)");
+                    else if (r.Intent == "clear") { ClearChatLog(); }
                     else if (r.Intent == "quit") { ClearChatLog(); AppendChat("icm", dispatcher.Help()); }
                     else
                     {
                         AppendChat("icm", r.Text);
                         if (r.ProposedRow != null) OfferInsertRow(r.ProposedTable, r.ProposedRow);
+                        if (r.WrittenPath != null) { RefreshTree(); OpenFilePath(r.WrittenPath); }
                     }
                     turnRunning = false; chatSend.Text = "Send";
                     SetChatEnabled(true);
@@ -856,23 +877,50 @@ namespace Icm
 
         private void AppendChat(string who, string text)
         {
-            Color c;
-            if (who == "you") c = Color.LightSkyBlue;
-            else if (who == "icm")
+            if (who == "you")
             {
-                if (text.StartsWith("PASS")) c = Theme.Good;
-                else if (text.StartsWith("FAIL") || text.StartsWith("[error]") || text.StartsWith("dispatch failed")) c = Theme.Bad;
-                else c = Theme.Fg;
+                AppendLabel("you", Color.LightSkyBlue);
+                AppendLogLine(text, Theme.Fg);
+                AppendLogLine("", Theme.Fg);
+                return;
             }
-            else c = Theme.Fg;
-            AppendLogLine(who + ": " + text, c);
+            if (who == "icm")
+            {
+                // Oracle status lines keep their pass/fail colour and stay plain; everything else is
+                // the model's answer, rendered as markdown.
+                if (text.StartsWith("PASS"))
+                {
+                    AppendLabel("icm", Theme.FgDim); AppendLogLine(text, Theme.Good); AppendLogLine("", Theme.Fg); return;
+                }
+                if (text.StartsWith("FAIL") || text.StartsWith("[error]") || text.StartsWith("dispatch failed"))
+                {
+                    AppendLabel("icm", Theme.FgDim); AppendLogLine(text, Theme.Bad); AppendLogLine("", Theme.Fg); return;
+                }
+                AppendLabel("icm", Theme.FgDim);
+                ChatMarkdown.Render(chatLog, text);
+                AppendLogLine("", Theme.Fg);
+                return;
+            }
+            AppendLogLine(who + ": " + text, Theme.Fg);
             AppendLogLine("", Theme.Fg);
+        }
+
+        // A bold role label on its own line (chat header above the message body).
+        private void AppendLabel(string who, Color color)
+        {
+            chatLog.SelectionStart = chatLog.TextLength; chatLog.SelectionLength = 0;
+            chatLog.SelectionFont = ChatMarkdown.GetFont("Segoe UI", 9f, FontStyle.Bold);
+            chatLog.SelectionColor = color;
+            chatLog.SelectionBackColor = Theme.Bg;
+            chatLog.AppendText(who + "\n");
         }
 
         private void AppendLogLine(string text, Color color)
         {
             chatLog.SelectionStart = chatLog.TextLength; chatLog.SelectionLength = 0;
+            chatLog.SelectionFont = ChatMarkdown.GetFont("Consolas", 9.75f, FontStyle.Regular);
             chatLog.SelectionColor = color;
+            chatLog.SelectionBackColor = Theme.Bg;   // clear any residual code-block highlight
             chatLog.AppendText(text + "\n");
             chatLog.SelectionColor = chatLog.ForeColor;
             chatLog.SelectionStart = chatLog.TextLength;

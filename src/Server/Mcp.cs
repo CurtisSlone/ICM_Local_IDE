@@ -45,9 +45,41 @@ namespace Icm
         private static Dictionary<string, object> ToolsList(Instance icm)
         {
             var tools = new List<object>();
+            // Built-in enumeration tools: let the orchestrator browse the KB, then pull entries.
+            if (icm.Manifest != null)
+            {
+                tools.Add(Json.Obj("name", "catalog",
+                    "description", "List this instance's KB entries (id, group, summary). Optional filters: group, doc_type.",
+                    "inputSchema", Json.Schema(Json.Obj("group", Json.StrProp(), "doc_type", Json.StrProp()))));
+                tools.Add(Json.Obj("name", "read_entry",
+                    "description", "Read one KB entry's full text by id (routing metadata stripped).",
+                    "inputSchema", Json.Schema(Json.Obj("id", Json.StrProp()), "id")));
+            }
             foreach (Tool t in icm.Config.Tools)
                 tools.Add(Json.Obj("name", t.Name, "description", t.Description, "inputSchema", InputSchema(t)));
             return Json.Obj("tools", tools.ToArray());
+        }
+
+        // Built-in (non-instance) tools the host serves directly: KB enumeration.
+        private static Dictionary<string, object> CallBuiltin(object id, Instance icm, string name, Dictionary<string, object> args)
+        {
+            try
+            {
+                if (name == "catalog")
+                {
+                    if (icm.Manifest == null) return ToolResult(id, "(no manifest.json)", false);
+                    string text = icm.Manifest.Catalog(Json.GetString(args, "group"), Json.GetString(args, "doc_type"));
+                    return ToolResult(id, text.Length > 0 ? text : "(no matching entries)", false);
+                }
+                if (name == "read_entry")
+                {
+                    string eid = Json.GetString(args, "id");
+                    if (eid == null) return ToolResult(id, "read_entry needs an 'id' argument", true);
+                    return ToolResult(id, icm.ReadEntry(eid), false);
+                }
+            }
+            catch (IcmError e) { return ToolResult(id, e.Message, true); }
+            return ToolResult(id, "unknown builtin: " + name, true);
         }
 
         private static Dictionary<string, object> Ok(object id, object result) { return Json.Obj("jsonrpc", "2.0", "id", id, "result", result); }
@@ -80,11 +112,12 @@ namespace Icm
                 {
                     string name = Json.Pointer(msg, "/params/name") as string;
                     if (name == null) name = "";
+                    Dictionary<string, object> args = Json.AsObject(Json.Pointer(msg, "/params/arguments"));
+                    if (args == null) args = new Dictionary<string, object>();
+                    if (name == "catalog" || name == "read_entry") return CallBuiltin(id, icm, name, args);
                     Tool tool = null;
                     foreach (Tool t in icm.Config.Tools) if (t.Name == name) { tool = t; break; }
                     if (tool == null) return Err(id, -32602, "Unknown tool: " + name);
-                    Dictionary<string, object> args = Json.AsObject(Json.Pointer(msg, "/params/arguments"));
-                    if (args == null) args = new Dictionary<string, object>();
                     return CallTool(id, icm, disp, tool, args);
                 }
                 default:

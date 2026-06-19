@@ -54,10 +54,26 @@ namespace Icm
             }
             else if (n.Kind == Conventions.Node.Read)
             {
-                string id = StateStr(state, InputKey(n, 0, "entry_id"));
-                string ctx = "";
-                if (id.Length > 0) { try { ctx = icm.ReadEntry(id); } catch (IcmError) { ctx = ""; } }
-                Set(state, OutputKey(n, 0, "context"), ctx);
+                // Accepts one id or a comma/newline-delimited list (from route_many). Each entry is
+                // read with its routing metadata stripped and prefixed with a "## title (group)" header.
+                string raw = StateStr(state, InputKey(n, 0, "entry_id"));
+                var sb = new StringBuilder();
+                foreach (string part in raw.Split(',', '\n'))
+                {
+                    string id = part.Trim();
+                    if (id.Length == 0 || id == "none") continue;
+                    try
+                    {
+                        string body = icm.ReadEntry(id);
+                        Entry e = icm.Manifest != null ? icm.Manifest.GetEntry(id) : null;
+                        string title = e != null ? e.Title : id;
+                        string grp = (e != null && e.Group.Length > 0) ? " (" + e.Group + ")" : "";
+                        if (sb.Length > 0) sb.Append("\n\n");
+                        sb.Append("## " + title + grp + "\n" + body);
+                    }
+                    catch (IcmError) { }
+                }
+                Set(state, OutputKey(n, 0, "context"), sb.ToString());
             }
             else if (n.Kind == Conventions.Node.Generate)
             {
@@ -97,6 +113,19 @@ namespace Icm
             else if (n.Kind == Conventions.Node.Loop)
             {
                 RunLoop(n, state);
+            }
+            else if (n.Kind == Conventions.Node.RouteMany)
+            {
+                int k = (int)NumExtra(n, "maxK", 3);
+                List<string> ids = disp.RouteMany(StateStr(state, InputKey(n, 0, "request")), k);
+                Set(state, OutputKey(n, 0, "entry_ids"), string.Join(",", ids.ToArray()));
+            }
+            else if (n.Kind == Conventions.Node.Catalog)
+            {
+                string grp = Json.GetString(n.Extra, "group");
+                string dt = Json.GetString(n.Extra, "doc_type");
+                string cat = icm.Manifest != null ? icm.Manifest.Catalog(grp, dt) : "";
+                Set(state, OutputKey(n, 0, "catalog"), cat);
             }
             else if (n.Kind == Conventions.Node.Branch)
             {

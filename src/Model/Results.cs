@@ -17,6 +17,7 @@ namespace Icm
         public bool IsError = false;    // true when Text is an error message
         public string ProposedTable;    // set on a successful `propose`: the target table
         public string ProposedRow;      // set on a successful `propose`: the validated tab-joined row
+        public string WrittenPath;      // set when output was redirected to a file ("> path"); absolute path
     }
 
     // The outcome of an oracle run on a table.

@@ -50,6 +50,10 @@ namespace Icm
 
         // One turn: conversation rewrite (if there is history) -> classify -> run capability.
         // Never throws for model/oracle failures; it returns a TurnResult with IsError set.
+        // One turn. A line beginning with '/' is an explicit slash command (deterministic dispatch to
+        // a capability or flow). Anything else is casual chat with the model. This replaces "classify
+        // every line": the weak local model is unreliable at picking actions, so actions are explicit
+        // and chat is just chat. (/do still offers the old classify-and-route path on demand.)
         public TurnResult Turn(string line)
         {
             var r = new TurnResult();
@@ -58,43 +62,248 @@ namespace Icm
             if (line.Length == 0) { r.Text = ""; return r; }
             cancel = new Cancel();
 
-            if (history.Count > 0)
+            if (line[0] == '/')
             {
-                try
-                {
-                    string standalone = Rewrite(line);
-                    if (!string.IsNullOrEmpty(standalone) && standalone.Trim() != line)
-                    {
-                        r.Standalone = standalone.Trim();
-                        r.Rewritten = true;
-                        Status("rewrite: read as \"" + r.Standalone + "\"");
-                    }
-                }
-                catch (IcmError) { /* non-load-bearing: fall back to the raw line */ }
+                RunSlash(line, r);
+                if (r.Intent != "clear")
+                { Remember("you: " + line); Remember("icm: " + (r.IsError ? r.Text : Truncate(r.Text, 400))); }
+                return r;
             }
 
-            Status("dispatch: classifying");
-            string intent, query;
-            try { Classify(r.Standalone, out intent, out query); }
-            catch (IcmError e) { r.Intent = "(error)"; r.IsError = true; r.Text = "dispatch failed: " + e.Message; return r; }
-            r.Intent = intent; r.Query = query;
-            Status("intent=" + intent + "  query=\"" + query + "\"");
-
-            try
-            {
-                if (intent == Conventions.Intent.Quit) r.Text = "bye";
-                else if (intent == Conventions.Intent.Help) r.Text = Help();
-                else if (intent == Conventions.Intent.Ask) r.Text = DoAsk(query);
-                else if (intent == Conventions.Intent.Make) r.Text = DoMake(query);
-                else if (intent == Conventions.Intent.Validate) r.Text = Validate(ParseTable(query), null).ToText(MaxProblemsShown);
-                else if (intent == Conventions.Intent.Propose) DoPropose(query, r);
-                else r.Text = "unknown intent '" + intent + "' (try help)";
-            }
+            r.Intent = "chat";
+            Status("chat");
+            try { r.Text = DoChat(line); }
             catch (IcmError e) { r.IsError = true; r.Text = "[error] " + e.Message; }
-
             Remember("you: " + line);
             Remember("icm: " + (r.IsError ? r.Text : Truncate(r.Text, 400)));
             return r;
+        }
+
+        // Split "/cmd the rest" into ("cmd", "the rest"); cmd is lowercased. Public for SelfTest.
+        public static void ParseCommand(string line, out string cmd, out string rest)
+        {
+            string body = (line != null && line.StartsWith("/")) ? line.Substring(1) : (line ?? "");
+            SplitFirst(body, out cmd, out rest);
+            cmd = cmd.ToLowerInvariant();
+        }
+
+        private static void SplitFirst(string s, out string first, out string rest)
+        {
+            s = (s ?? "").TrimStart();
+            int i = 0; while (i < s.Length && !char.IsWhiteSpace(s[i])) i++;
+            first = s.Substring(0, i);
+            rest = (i < s.Length) ? s.Substring(i).Trim() : "";
+        }
+
+        private void RunSlash(string line, TurnResult r)
+        {
+            string cmd, rest;
+            ParseCommand(line, out cmd, out rest);
+            string redirect; rest = ParseRedirect(rest, out redirect);
+            string task = rest;
+            r.Intent = cmd;
+            Status("command: /" + cmd);
+            try
+            {
+                switch (cmd)
+                {
+                    case "help": case "h": case "?": r.Text = Help(); break;
+                    case "ask":
+                        if (rest.Length == 0) { Usage(r, "/ask <question>"); break; }
+                        r.Intent = Conventions.Intent.Ask; r.Text = DoAsk(rest); break;
+                    case "make":
+                        if (rest.Length == 0) { Usage(r, "/make <prompt>"); break; }
+                        r.Intent = Conventions.Intent.Make; r.Text = DoMake(rest); break;
+                    case "write": case "build":
+                        if (rest.Length == 0) { Usage(r, "/write <task>"); break; }
+                        RunNamedFlow("write_grounded", rest, r); break;
+                    case "csharp": case "cs":
+                        if (rest.Length == 0) { Usage(r, "/csharp <task>"); break; }
+                        RunNamedFlow("csharp", rest, r); break;
+                    case "ps": case "powershell":
+                        if (rest.Length == 0) { Usage(r, "/ps <task>"); break; }
+                        RunNamedFlow("powershell", rest, r); break;
+                    case "flow":
+                    {
+                        string name, input; SplitFirst(rest, out name, out input);
+                        if (name.Length == 0) { Usage(r, "/flow <name> <input>"); break; }
+                        RunNamedFlow(name, input, r); break;
+                    }
+                    case "list": case "ls":
+                        r.Text = (icm.Manifest != null) ? CatalogOr(rest) : "(no manifest.json)"; break;
+                    case "search": case "docs":
+                        r.Text = DoSearch(rest); break;
+                    case "validate":
+                        if (rest.Length == 0) { Usage(r, "/validate <table>"); break; }
+                        r.Text = Validate(ParseTable(rest), null).ToText(MaxProblemsShown); break;
+                    case "propose":
+                        if (rest.Length == 0) { Usage(r, "/propose <description>"); break; }
+                        DoPropose(rest, r); break;
+                    case "do":
+                    {
+                        if (rest.Length == 0) { Usage(r, "/do <request>"); break; }
+                        string standalone = rest;
+                        try { if (history.Count > 0) standalone = Rewrite(rest); } catch (IcmError) { }
+                        r.Standalone = standalone;
+                        string intent, query;
+                        Classify(standalone, out intent, out query);
+                        r.Intent = intent; r.Query = query;
+                        RunIntent(intent, query, r);
+                        break;
+                    }
+                    case "note":
+                        if (rest.Length == 0) { Usage(r, "/note <text>"); break; }
+                        AppendNote(rest); r.Text = "noted."; break;
+                    case "notes":
+                    {
+                        string notes = ReadNotes();
+                        r.Text = notes.Length > 0 ? notes : "(no notes yet - use /note <text>, or redirect a write with '> path')";
+                        break;
+                    }
+                    case "clear": case "reset":
+                        history.Clear(); r.Intent = "clear"; r.Text = ""; break;
+                    case "quit": case "exit": case "q":
+                        r.Intent = Conventions.Intent.Quit; r.Text = "bye"; break;
+                    default:
+                        r.Text = "Unknown command '/" + cmd + "'. Try /help."; break;
+                }
+            }
+            catch (IcmError e) { r.IsError = true; r.Text = "[error] " + e.Message; }
+
+            // Redirect output to a file in the workspace ("... > path"). Code fences are stripped so a
+            // .cs/.ps1 file is clean. The write is recorded in NOTES.md for session continuity.
+            if (redirect != null && !r.IsError && r.Text != null && r.Text.Length > 0
+                && r.Intent != "clear" && r.Intent != Conventions.Intent.Quit)
+            {
+                try
+                {
+                    string content = Markdown.StripFence(r.Text);
+                    icm.WriteFile(redirect, content);
+                    r.WrittenPath = icm.Resolve(redirect);
+                    AppendNote("wrote `" + redirect + "` (/" + cmd + ": " + Truncate(task, 80) + ")");
+                    r.Text = "Wrote " + redirect + " (" + content.Length + " chars).";
+                }
+                catch (IcmError e) { r.IsError = true; r.Text = "[error] writing " + redirect + ": " + e.Message; }
+            }
+        }
+
+        private static void Usage(TurnResult r, string usage) { r.Text = "Usage: " + usage; r.IsError = true; }
+
+        // Parse a trailing " > path" redirect off a command's argument. Returns the argument without the
+        // redirect; sets path (null if none). Public for SelfTest.
+        public static string ParseRedirect(string rest, out string path)
+        {
+            path = null;
+            if (rest == null) return "";
+            int idx = rest.LastIndexOf(" > ", StringComparison.Ordinal);
+            if (idx >= 0)
+            {
+                string p = rest.Substring(idx + 3).Trim();
+                if (p.Length > 0) { path = p; return rest.Substring(0, idx).Trim(); }
+            }
+            return rest;
+        }
+
+        // --- session memory (NOTES.md in the instance) ---
+
+        private void AppendNote(string text)
+        {
+            string existing = ReadNotes();
+            if (existing.Length == 0) existing = "# " + icm.Config.Name + " - session notes\n";
+            string stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+            try { icm.WriteFile(Conventions.NotesFile, existing.TrimEnd() + "\n- [" + stamp + "] " + text + "\n"); }
+            catch (IcmError) { }
+        }
+
+        private string ReadNotes()
+        {
+            try { return icm.ReadFile(Conventions.NotesFile); } catch (IcmError) { return ""; }
+        }
+
+        // The old classify-and-route path, now reachable via /do.
+        private void RunIntent(string intent, string query, TurnResult r)
+        {
+            if (intent == Conventions.Intent.Quit) r.Text = "bye";
+            else if (intent == Conventions.Intent.Help) r.Text = Help();
+            else if (intent == Conventions.Intent.Ask) r.Text = DoAsk(query);
+            else if (intent == Conventions.Intent.Make) r.Text = DoMake(query);
+            else if (intent == Conventions.Intent.Validate) r.Text = Validate(ParseTable(query), null).ToText(MaxProblemsShown);
+            else if (intent == Conventions.Intent.Propose) DoPropose(query, r);
+            else r.Text = "unknown intent '" + intent + "'";
+        }
+
+        private string CatalogOr(string group)
+        {
+            string cat = icm.Manifest.Catalog(group.Length > 0 ? group : null, null);
+            return cat.Length > 0 ? cat : ("(no entries" + (group.Length > 0 ? " in group '" + group + "'" : "") + ")");
+        }
+
+        private void RunNamedFlow(string name, string input, TurnResult r)
+        {
+            Flow flow;
+            try { flow = Flow.Load(icm.FlowPath(name)); }
+            catch (IcmError e) { r.IsError = true; r.Text = "[error] no flow '" + name + "': " + e.Message; return; }
+            var engine = new FlowEngine(icm, this, status);
+            Dictionary<string, object> state = engine.Run(flow, input);
+            r.Text = FlowResult(flow, state);
+        }
+
+        private static string FlowResult(Flow flow, Dictionary<string, object> state)
+        {
+            List<string> keys = FlowEngine.ResultKeys(flow);
+            if (keys.Count == 0) keys = new List<string>(new string[] { "answer", "code", "row", "verdict", "output", "text" });
+            var sb = new StringBuilder();
+            foreach (string k in keys)
+            {
+                object v;
+                if (state.TryGetValue(k, out v) && v != null) { if (sb.Length > 0) sb.Append("\n"); sb.Append(v.ToString()); }
+            }
+            return sb.Length > 0 ? sb.ToString() : "(flow produced no output)";
+        }
+
+        private string DoSearch(string rest)
+        {
+            string first, more; SplitFirst(rest, out first, out more);
+            string corpus = "dotnet", query = rest;
+            if (first.Length > 0 && CorpusExists(first)) { corpus = first; query = more; }
+            if (query.Length == 0) return "Usage: /search [corpus] <query>";
+            string embedModel = string.IsNullOrEmpty(icm.Config.Models.Embed) ? "nomic-embed-text" : icm.Config.Models.Embed;
+            return Search.Run(icm, url, corpus, query, 5, true, embedModel, status);
+        }
+
+        private bool CorpusExists(string corpus)
+        {
+            try { return System.IO.File.Exists(icm.Resolve(Conventions.RefdocRel(corpus))); }
+            catch { return false; }
+        }
+
+        // Casual conversation: the model talks the operator through planning, aware of the available
+        // slash commands and the KB catalog so it can point at the exact command to run.
+        private string DoChat(string line)
+        {
+            string system;
+            try { system = icm.ReadFile(Conventions.SystemFile); } catch (IcmError) { system = ""; }
+            var sb = new StringBuilder();
+            if (system.Length > 0) sb.Append(system + "\n\n");
+            sb.Append("You are the conversational assistant of the '" + icm.Config.Name + "' tool for: " + icm.Config.Domain + ". ");
+            sb.Append("The operator chats with you to plan and build software. You cannot run tools or edit files yourself; the operator acts by typing slash commands. ");
+            sb.Append("When an action would help, tell them the EXACT command to run with the argument filled in:\n");
+            sb.Append("  /ask <question>   grounded answer from the knowledge base\n");
+            sb.Append("  /write <task>     generate C# code, compiled and repaired until it builds\n");
+            sb.Append("  /ps <task>        generate PowerShell, parse-checked\n");
+            sb.Append("  /list [group]     list available patterns/references/recipes/scaffolds\n");
+            sb.Append("  /search <query>   search the API/doc corpora\n");
+            sb.Append("  /make <prompt>    freeform generation\n");
+            if (icm.Manifest != null)
+            {
+                string cat = icm.Manifest.Catalog(null, null);
+                if (cat.Length > 0) sb.Append("\nAvailable knowledge:\n" + Truncate(cat, 2500) + "\n");
+            }
+            string notes = ReadNotes();
+            if (notes.Length > 0) sb.Append("\nProject notes (NOTES.md, prior session context):\n" + Truncate(notes, 1500) + "\n");
+            if (history.Count > 0) sb.Append("\nConversation so far:\n" + string.Join("\n", history.ToArray()) + "\n");
+            sb.Append("\nOperator: " + line + "\n\nReply briefly and concretely. If a slash command would do what they want, name it exactly. Do not invent commands or APIs you were not told about.");
+            return Ollama.Generate(url, icm.Config.Models.Generate, sb.ToString(), null, 0.4, GenTimeoutMs, cancel);
         }
 
         private void Remember(string entry)
@@ -174,6 +383,47 @@ namespace Icm
 
         public string Ask(string query) { cancel = new Cancel(); return DoAsk(query); }
         public string RouteEntryId(string query) { cancel = new Cancel(); return Route(query); }
+
+        // Constrained MULTI-pick: the model proposes up to maxK relevant entry ids (a JSON array
+        // constrained to the manifest enum). The grounding step for generation that uses several
+        // patterns/references at once. Stays on-thesis: the model proposes from a fixed set, the host
+        // reads what it picked.
+        public List<string> RouteMany(string query, int maxK) { cancel = new Cancel(); return RouteManyImpl(query, maxK); }
+
+        private List<string> RouteManyImpl(string query, int maxK)
+        {
+            var ids = new List<string>();
+            if (icm.Manifest == null || icm.Manifest.Entries.Count == 0) return ids;
+            if (maxK < 1) maxK = 1;
+
+            var enumIds = new List<string>();
+            var lines = new List<string>();
+            foreach (Entry e in icm.Manifest.Entries)
+            {
+                enumIds.Add(e.Id);
+                string grp = e.Group.Length > 0 ? " (" + e.Group + ")" : "";
+                string kw = e.Keywords.Count > 0 ? "  [keywords: " + string.Join(", ", e.Keywords.ToArray()) + "]" : "";
+                lines.Add("- " + e.Id + grp + " : " + e.Title + " - " + e.Summary + kw);
+            }
+
+            object itemSchema = Json.EnumProp(enumIds);
+            object schema = Json.Schema(Json.Obj("entry_ids", Json.Obj("type", "array", "items", itemSchema)), "entry_ids");
+            string prompt =
+                "Select EVERY KB entry whose content would help with the task below - the patterns, " +
+                "references, or snippets you would ground on while writing the answer. Return up to " +
+                maxK + " entry ids, most relevant first, as a JSON array. Return an empty array if none apply.\n\n" +
+                "Index:\n" + string.Join("\n", lines.ToArray()) + "\n\nTask: " + query;
+            Dictionary<string, object> v = Ollama.GenerateJson(url, icm.Config.DispatchModel(), prompt, schema, 0.1, DispatchTimeoutMs, cancel);
+            foreach (object o in Json.GetArr(v, "entry_ids"))
+            {
+                if (o == null) continue;
+                string s = o.ToString().Trim();
+                if (s.Length == 0 || s == "none") continue;
+                if (!ids.Contains(s)) ids.Add(s);
+                if (ids.Count >= maxK) break;
+            }
+            return ids;
+        }
 
         public string Generate(string prompt, double temperature)
         {
@@ -404,21 +654,29 @@ namespace Icm
 
         public string Help()
         {
-            string entries = "(no manifest)";
+            string groups = "(no manifest)";
             if (icm.Manifest != null)
             {
-                var ids = new List<string>();
-                foreach (Entry e in icm.Manifest.Entries) ids.Add(e.Id);
-                entries = string.Join(", ", ids.ToArray());
+                List<string> gs = icm.Manifest.Groups();
+                groups = gs.Count > 0 ? string.Join(", ", gs.ToArray()) : "(none)";
             }
             return
-                "This is the " + icm.Config.Name + " operator console. Type natural language; I route it to one capability:\n" +
-                "- ask X      answer X from the knowledge base (" + entries + ")\n" +
-                "- propose X  propose a new table row for X; the oracle validates it, then you can insert it\n" +
-                "- make X     generate freeform text/code with the model\n" +
-                "- validate T  check table T against its schema (the oracle)\n" +
-                "- help / quit\n" +
-                "The model classifies your line into one of these; it never free-roams tools.";
+                "This is the " + icm.Config.Name + " operator console (" + icm.Config.Domain + ").\n" +
+                "Chat normally to plan and ask questions; use slash commands to act:\n\n" +
+                "  /ask <question>          grounded answer from the knowledge base\n" +
+                "  /write <task>            generate C#, compiled and repaired until it builds\n" +
+                "  /ps <task>               generate PowerShell, parse-checked\n" +
+                "  /make <prompt>           freeform generation (no grounding or verify)\n" +
+                "  /list [group]            list KB entries (groups: " + groups + ")\n" +
+                "  /search [corpus] <query> hybrid search the doc corpora\n" +
+                "  /validate <table>        run the oracle on a data table\n" +
+                "  /propose <description>   propose a table row, oracle-validated\n" +
+                "  /flow <name> <input>     run any flow by name\n" +
+                "  /note <text>  /notes     add to / show NOTES.md (session memory)\n" +
+                "  /do <request>            let the dispatcher classify and route it\n" +
+                "  /clear   /help   /quit\n\n" +
+                "Append ' > path' to save a command's output to a file, e.g. /write a hex viewer > out/Hex.cs\n" +
+                "Anything without a leading '/' is casual chat with the model.";
         }
     }
 }

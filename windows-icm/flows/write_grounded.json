@@ -1,0 +1,14 @@
+{
+  "name": "write_grounded",
+  "description": "Generate C# 5 code grounded in EVERY relevant KB entry. route_many picks the patterns/references/snippets that apply (not just one), reads them all, then generates and compiles with csc, repairing until it builds. The enumeration step in action.",
+  "nodes": [
+    { "id": "pick",  "kind": "route_many", "inputs": ["request"],   "outputs": ["entry_ids"], "maxK": 3 },
+    { "id": "read",  "kind": "read",       "inputs": ["entry_ids"], "outputs": ["context"] },
+    { "id": "build", "kind": "loop", "maxIterations": 4, "until": "ok", "outputs": ["code", "output"],
+      "body": [
+        { "id": "gen", "kind": "generate", "outputs": ["code"],
+          "prompt": "Write C# that compiles with the in-box csc at langversion 5. FORBIDDEN (will not compile): string interpolation $\"...\", expression-bodied members, null-conditional ?., records, target-typed new, tuples, System.Text.Json. Use string concatenation or string.Format, full property bodies, and System.Web.Script.Serialization for JSON. Ground your code in these reference entries (apply their exact signatures and idioms):\n\n--- REFERENCE ---\n{context}\n--- END ---\n\nTask: {request}\n\nIf the compiler reported errors on the previous attempt, fix exactly those:\n{output}\n\nReturn ONE complete, compilable C# file and nothing else (no prose, no fences)." },
+        { "id": "check", "kind": "tool", "tool": "csc_check", "args": { "code": "{code}" }, "outputs": ["output"] }
+      ] }
+  ]
+}

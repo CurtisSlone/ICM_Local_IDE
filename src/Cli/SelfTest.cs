@@ -24,6 +24,10 @@ namespace Icm
             fail += Check("metadata block parse + strip", MetaBlock);
             fail += Check("json pretty-print", JsonPretty);
             fail += Check("flow branch condition", BranchCondition);
+            fail += Check("manifest enumeration helpers", ManifestHelpers);
+            fail += Check("markdown parse", MarkdownParse);
+            fail += Check("slash command parse", SlashParse);
+            fail += Check("slash redirect + fence strip", SlashRedirect);
 
             Console.WriteLine(fail == 0 ? "selftest: ALL PASS" : ("selftest: " + fail + " FAILED"));
             return fail;
@@ -129,6 +133,67 @@ namespace Icm
             Dictionary<string, object> back = Json.AsObject(Json.Parse(pretty));
             return back != null && Json.GetString(back, "note") == "a<b's"
                 && pretty.Contains("\n  ") && pretty.Contains("[]") && Json.GetArr(back, "list").Count == 2;
+        }
+
+        private static bool SlashParse()
+        {
+            string cmd, rest;
+            Dispatcher.ParseCommand("/write a string reverser", out cmd, out rest);
+            if (cmd != "write" || rest != "a string reverser") return false;
+            Dispatcher.ParseCommand("/list", out cmd, out rest);
+            if (cmd != "list" || rest != "") return false;
+            Dispatcher.ParseCommand("/ASK   Foo bar ", out cmd, out rest);   // case-folded, trimmed
+            return cmd == "ask" && rest == "Foo bar";
+        }
+
+        private static bool SlashRedirect()
+        {
+            string path;
+            string rest = Dispatcher.ParseRedirect("a hex viewer > out/Hex.cs", out path);
+            if (rest != "a hex viewer" || path != "out/Hex.cs") return false;
+            rest = Dispatcher.ParseRedirect("no redirect here", out path);
+            if (path != null || rest != "no redirect here") return false;
+            if (Markdown.StripFence("```csharp\nint x = 1;\n```") != "int x = 1;") return false;
+            return Markdown.StripFence("plain text") == "plain text";
+        }
+
+        private static bool MarkdownParse()
+        {
+            // inline: plain + bold + code spans in order
+            List<MdSpan> sp = Markdown.ParseInline("use `csc` and **flags**");
+            if (sp.Count != 4) return false;
+            if (sp[0].Style != MdSpanStyle.Plain || sp[1].Style != MdSpanStyle.Code || sp[1].Text != "csc") return false;
+            if (sp[3].Style != MdSpanStyle.Bold || sp[3].Text != "flags") return false;
+
+            // a link span carries its href
+            List<MdSpan> ln = Markdown.ParseInline("see [docs](http://x)");
+            if (ln[1].Style != MdSpanStyle.Link || ln[1].Text != "docs" || ln[1].Href != "http://x") return false;
+
+            // block kinds: heading, fenced code (fence lines not emitted), bullet
+            List<MdLine> doc = Markdown.Parse("# Title\n```\ncode line\n```\n- item one");
+            if (doc[0].Kind != MdLineKind.Heading || doc[0].Level != 1) return false;
+            bool hasCode = false, hasBullet = false, hasFenceText = false;
+            foreach (MdLine l in doc)
+            {
+                if (l.Kind == MdLineKind.Code) { hasCode = true; if (l.Raw != "code line") return false; }
+                if (l.Kind == MdLineKind.Bullet) hasBullet = true;
+                if (l.Kind == MdLineKind.Paragraph && l.Spans.Count > 0 && l.Spans[0].Text.Contains("```")) hasFenceText = true;
+            }
+            return hasCode && hasBullet && !hasFenceText;
+        }
+
+        private static bool ManifestHelpers()
+        {
+            var m = new Manifest();
+            m.Entries.Add(new Entry { Id = "a", Group = "creational", DocType = "pattern", Summary = "sa" });
+            m.Entries.Add(new Entry { Id = "b", Group = "structural", DocType = "pattern", Summary = "sb" });
+            m.Entries.Add(new Entry { Id = "c", Group = "creational", DocType = "pattern", Summary = "sc" });
+            m.Entries.Add(new Entry { Id = "d", Group = "", DocType = "reference", Summary = "sd" });
+            if (m.Groups().Count != 2) return false;                 // creational, structural
+            if (m.ByGroup("creational").Count != 2) return false;
+            if (m.ByDocType("reference").Count != 1) return false;
+            string cat = m.Catalog("creational", null);
+            return cat.Contains("a [creational]: sa") && cat.Contains("c [creational]: sc") && !cat.Contains("- b");
         }
 
         private static bool BranchCondition()

@@ -37,8 +37,15 @@ oracle, not from the model being smart. Three roles, one trust line:
 - ORACLE (here: a JSON-schema-driven TSV validator) accepts or rejects. It has no opinions.
 
 The guardrails that keep a weak local model reliable:
-- **Dispatcher, not chat.** Each chat turn is ONE constrained classify call (`{intent, query}`),
-  then code runs the chosen capability. Never an open tool-calling loop.
+- **Operator drives; the model never picks actions.** Chat turns split two ways (`Dispatcher.Turn`):
+  a line starting with `/` is an explicit slash command dispatched deterministically to a capability
+  or flow (`/ask`, `/write`, `/ps`, `/make`, `/list`, `/search`, `/validate`, `/propose`, `/flow`,
+  `/note`, `/notes`, `/do`, `/clear`, `/help`, `/quit`); anything else is casual chat where the model
+  plans and points at the exact command to run but executes nothing. `/do <request>` is the opt-in
+  classify-and-route path (`{intent, query}`). Never an open tool-calling loop. A command's output
+  can be redirected to a workspace file with a trailing `> path` (markdown fences stripped, so a
+  `.cs`/`.ps1` lands clean and the GUI opens it); writes and `/note` lines persist in `NOTES.md`,
+  which the chat reads back as session context.
 - **Tools are declared, args are filled.** A tool's command is authored in the instance config; the
   model only fills constrained arguments. Tool SELECTION is the strong orchestrator's (Claude over
   MCP) or an authored flow's, never an open local-model loop.
@@ -60,13 +67,25 @@ from the GUI build, `Gui\` (WinForms + GUI Main) from the console build.
 launchers, which load the assembly bytes inside trusted `powershell.exe`:
 
 ```
+.\icm.cmd windows-icm                       # VSCode-style: open the operator console on a dir (rel or abs)
 .\icm.cmd open windows-icm
 .\icm.cmd flow windows-icm csharp "a method that reverses a string"
 .\icm-gui.cmd windows-icm
 ```
 
+`icm <dir>` is the primary terminal entry point: it opens the chat console on that ICM directory.
+The path is resolved against the terminal's working directory (the launcher forwards argv unchanged
+through the in-memory load - SAC only changes HOW the bytes load, not the arguments). Put the
+`win_icm_code` dir on PATH and you can run `icm .` or `icm ..\myproj` from any folder, including the
+VSCode integrated terminal:
+
+```
+setx PATH "%PATH%;C:\Users\curti\Documents\ollama_ICM_Code\win_icm_code"   # once, then reopen the terminal
+```
+
 Do NOT run `.\icm.exe` / `.\icm-gui.exe` directly (SAC will block them). The prebuilt exes are
-committed so downloaders can use the launchers immediately.
+committed so downloaders can use the launchers immediately. The WinForms GUI (`icm-gui.cmd`) still
+works but is secondary now - the terminal console is the main single-operator interface.
 
 Verify the deterministic core with no model: `.\icm.cmd selftest` (asserts the oracle, JSON, TSV,
 argv quoting, the path-escape guard, and path conventions).
@@ -95,6 +114,7 @@ icm flow <dir> <name> [in...]  run an authored workflow (flows/<name>.json)
 icm validate <dir> <table>     run the oracle on schemas/<table>.json + samples/<table>.txt
 icm docsearch <dir> <corpus> [-k N] [--no-embed] <query...>   hybrid search a refdocs corpus
 icm reindex <dir>              regenerate manifest.json from files' <!--icm--> metadata blocks
+icm list  <dir> [--group G] [--type T] [--json]   enumerate the KB catalog
 icm gen  <dir> <prompt...>     one raw generate call
 icm selftest                   check the deterministic core (no model)
 ```
@@ -154,13 +174,19 @@ effective Ollama URL. No host rebuild is needed for config changes (config is da
 
 Prefer **composing primitives in an authored flow** over adding host code. The host should stay
 small, general primitives; capabilities belong in instance content (flows/skills). The flow node
-kinds are the primitives: `route`, `read`, `generate`, `answer`, `propose`, `validate`, `tool`,
+kinds are the primitives: `route`, `read` (one id OR a comma/newline list, each read with metadata
+stripped + a header), `generate`, `answer`, `propose`, `validate`, `tool`,
 `loop` (repeat a `body` until a state key is truthy, or `maxIterations` times - the bounded
 repair/retry primitive), `branch` (run a `then` or `else` body based on a `when`/`test` on a state
-key: `empty`/`nonempty`/`truthy`/`falsy` - the conditional primitive), and `search` (hybrid
-BM25+embedding search over a `refdocs/<corpus>.json`, writing the hits to `context`). The bundled
-`windows-icm/flows/answer_fallback.json` composes these into tier-2 grounding: route+read the KB,
-then `branch` when `context` is empty to `search` the docs corpus, then `answer`. For example, a
+key: `empty`/`nonempty`/`truthy`/`falsy` - the conditional primitive), `search` (hybrid
+BM25+embedding search over a `refdocs/<corpus>.json`, writing the hits to `context`), `route_many`
+(constrained MULTI-pick of up to `maxK` relevant manifest ids - the model proposes a SET, the host
+reads them all), and `catalog` (write the manifest index, optionally filtered by `group`/`doc_type`,
+to a state key for the model to enumerate). The bundled `windows-icm/flows/answer_fallback.json`
+composes these into tier-2 grounding: route+read the KB, then `branch` when `context` is empty to
+`search` the docs corpus, then `answer`; `windows-icm/flows/write_grounded.json` uses `route_many` to
+ground generation on every relevant pattern before the compile-repair `loop`. Enumeration is also
+exposed for the orchestrator: `icm list` and the built-in MCP tools `catalog` + `read_entry`. For example, a
 "generate code, compile, repair until it builds"
 capability (a.k.a. `generate_verify`) is **not** a host feature - it is an authored `loop` flow whose
 check is a declared `tool` (e.g. `csc`), feeding the tool's `{output}` back into the next `generate`
