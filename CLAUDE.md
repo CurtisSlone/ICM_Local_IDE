@@ -6,11 +6,16 @@ details. This is a from-scratch C# reimplementation of the Rust ICM host that li
 
 ## What this is
 
-A host that opens an instance directory and runs it, two Windows-native executables over one shared
-codebase:
+A host that opens an instance directory and runs it. The primary interface is a **terminal operator
+console**: `icm <dir>` opens an ICM and drops you into a chat REPL where you plan in natural language
+and act with slash commands (built to run inside a VSCode integrated terminal, like `code <dir>`).
+Two Windows-native executables over one shared codebase:
 
-- `icm.exe` - the console CLI (open / chat / mcp / flow / validate / gen / selftest).
-- `icm-gui.exe` - a "VSCode lite" WinForms front end (file tree + editor + chat panel).
+- `icm.exe` - the console CLI and operator console (`icm <dir>` / open / chat / mcp / flow / list /
+  validate / gen / selftest). This is the main single-operator interface.
+- `icm-gui.exe` - an OPTIONAL "VSCode lite" WinForms desktop front end (file tree + editor + chat
+  panel). Secondary; the terminal console is the primary path. It is not an IDE - the project is the
+  ICM host and its interface is the operator console.
 
 An **instance** (e.g. the bundled `windows-icm/`) is pure data the host loads: a KB, table schemas,
 scripts (tools), and authored workflows (flows). The host is domain-agnostic; all domain content
@@ -40,9 +45,13 @@ The guardrails that keep a weak local model reliable:
 - **Operator drives; the model never picks actions.** Chat turns split two ways (`Dispatcher.Turn`):
   a line starting with `/` is an explicit slash command dispatched deterministically to a capability
   or flow (`/ask`, `/write`, `/ps`, `/make`, `/list`, `/search`, `/validate`, `/propose`, `/flow`,
-  `/note`, `/notes`, `/do`, `/clear`, `/help`, `/quit`); anything else is casual chat where the model
-  plans and points at the exact command to run but executes nothing. `/do <request>` is the opt-in
-  classify-and-route path (`{intent, query}`). Never an open tool-calling loop. A command's output
+  `/chat`, `/flows`, `/note`, `/notes`, `/do`, `/clear`, `/help`, `/quit`). Plain text runs through the
+  conversational **router** (`RouteConversational`): the model proposes a flow from the closed catalog
+  (grammar-constrained enum), a deterministic gate (`Dispatcher.Gate`) accepts only an on-list,
+  non-low-confidence match, and it runs after a y/n confirm or falls back to `/ask` - mode set by
+  `router.autorun` (confirm | on | off, default confirm). Unrecognized commands fall back to `/ask`.
+  `/chat` is free conversation; `/do` is the opt-in classify-and-route path (`{intent, query}`). Never
+  an open tool-calling loop. A command's output
   can be redirected to a workspace file with a trailing `> path` (markdown fences stripped, so a
   `.cs`/`.ps1` lands clean and the GUI opens it); writes and `/note` lines persist in `NOTES.md`,
   which the chat reads back as session context.
@@ -179,7 +188,8 @@ stripped + a header), `generate`, `answer`, `propose`, `validate`, `tool`,
 `loop` (repeat a `body` until a state key is truthy, or `maxIterations` times - the bounded
 repair/retry primitive), `branch` (run a `then` or `else` body based on a `when`/`test` on a state
 key: `empty`/`nonempty`/`truthy`/`falsy` - the conditional primitive), `search` (hybrid
-BM25+embedding search over a `refdocs/<corpus>.json`, writing the hits to `context`), `route_many`
+BM25+embedding search over a corpus - `refdocs/<corpus>.json` if present, else the shipped
+`refdocs-seed/<corpus>.json`; vectors cache in `refdocs/` - writing the hits to `context`), `route_many`
 (constrained MULTI-pick of up to `maxK` relevant manifest ids - the model proposes a SET, the host
 reads them all), and `catalog` (write the manifest index, optionally filtered by `group`/`doc_type`,
 to a state key for the model to enumerate). The bundled `windows-icm/flows/answer_fallback.json`

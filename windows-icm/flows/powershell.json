@@ -1,6 +1,7 @@
 {
   "name": "powershell",
   "description": "Generate PowerShell 5.1 grounded in the KB, parse-check it, and repair until it parses.",
+  "whenToUse": "Write or generate a PowerShell script, parse-checked and repaired until it parses.",
   "nodes": [
     { "id": "route", "kind": "route", "inputs": ["request"],  "outputs": ["entry_id"] },
     { "id": "read",  "kind": "read",  "inputs": ["entry_id"], "outputs": ["context"] },

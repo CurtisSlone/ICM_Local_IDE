@@ -1,6 +1,7 @@
 {
   "name": "csharp",
   "description": "Generate C# 5 code grounded in the KB, compile it with csc, and repair until it builds.",
+  "whenToUse": "Write or generate C# code for a single focused task, compiled and repaired until it builds.",
   "nodes": [
     { "id": "route", "kind": "route", "inputs": ["request"],  "outputs": ["entry_id"] },
     { "id": "read",  "kind": "read",  "inputs": ["entry_id"], "outputs": ["context"] },

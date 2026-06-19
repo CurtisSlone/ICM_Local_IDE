@@ -1,0 +1,13 @@
+# Curated learn.microsoft conceptual pages for the dotnet_prose corpus.
+# One URL per line. Lines starting with # and blank lines are ignored.
+# Edit this list, then run: powershell -NoProfile -File tools/build_dotnet_prose.ps1
+# Bias: strings, file/stream I/O, binary I/O, and P/Invoke - the surfaces the game-modding
+# toolchain leans on. Reflection signatures already live in dotnet.json; this adds the "how/why".
+
+https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/strings/
+https://learn.microsoft.com/en-us/dotnet/standard/base-types/best-practices-strings
+https://learn.microsoft.com/en-us/dotnet/standard/io/how-to-read-text-from-a-file
+https://learn.microsoft.com/en-us/dotnet/standard/io/how-to-write-text-to-a-file
+https://learn.microsoft.com/en-us/dotnet/standard/io/how-to-read-and-write-to-a-newly-created-data-file
+https://learn.microsoft.com/en-us/dotnet/standard/native-interop/pinvoke
+https://learn.microsoft.com/en-us/dotnet/framework/interop/marshaling-data-with-platform-invoke

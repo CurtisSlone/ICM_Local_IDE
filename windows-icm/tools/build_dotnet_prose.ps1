@@ -5,9 +5,11 @@
 # shape the host's `search` node / `icm docsearch` reads.
 #
 #   powershell -NoProfile -File tools/build_dotnet_prose.ps1
-#   powershell -NoProfile -File tools/build_dotnet_prose.ps1 -UrlFile refdocs/dotnet_prose.urls.txt -Out refdocs/dotnet_prose.json
+# The curated URL list and shipped corpus live in refdocs-seed/ (tracked). Default output goes to the
+# local refdocs/ (gitignored) which the host prefers over the seed; to refresh the SHIPPED corpus,
+# add: -Out refdocs-seed/dotnet_prose.json  and commit it.
 param(
-    [string] $UrlFile = "refdocs/dotnet_prose.urls.txt",
+    [string] $UrlFile = "refdocs-seed/dotnet_prose.urls.txt",
     [string] $Out = "refdocs/dotnet_prose.json",
     [int] $MaxChars = 2400
 )

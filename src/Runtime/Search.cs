@@ -27,8 +27,16 @@ namespace Icm
         public static string Run(Instance icm, string url, string corpus, string query, int k, bool useEmbed, string embedModel, Action<string> status)
         {
             if (status == null) status = delegate(string s) { };
+            // Prefer a locally (re)built corpus in refdocs/; fall back to the shipped, tracked
+            // corpus in refdocs-seed/. (Vector caches always live in refdocs/, keyed by corpus + model.)
             string path = icm.Resolve(Conventions.RefdocRel(corpus));
-            if (!File.Exists(path)) throw new IcmError("corpus not built: " + Conventions.RefdocRel(corpus) + " (run the build_*_docs tool)");
+            if (!File.Exists(path))
+            {
+                string seed = icm.Resolve(Conventions.RefdocSeedRel(corpus));
+                if (File.Exists(seed)) path = seed;
+                else throw new IcmError("corpus not built: " + Conventions.RefdocRel(corpus) +
+                    " (ship it in " + Conventions.RefdocsSeedDir + "/ or run the build_*_docs tool)");
+            }
 
             List<object> arr = Json.AsArr(Json.Parse(File.ReadAllText(path)));
             var docs = new List<Doc>();

@@ -1,6 +1,7 @@
 {
   "name": "answer_fallback",
   "description": "Tier-2 grounded answer. Route to a reference entry and read it; if nothing in the KB matched (context is empty), fall back to a hybrid search over the dotnet refdocs corpus; then answer from whatever context was found. Demonstrates the `branch` and `search` primitives.",
+  "whenToUse": "Answer a question or look something up, falling back to a documentation search when the knowledge base does not cover it.",
   "nodes": [
     { "id": "route",  "kind": "route",  "inputs": ["request"],            "outputs": ["entry_id"] },
     { "id": "read",   "kind": "read",   "inputs": ["entry_id"],           "outputs": ["context"] },

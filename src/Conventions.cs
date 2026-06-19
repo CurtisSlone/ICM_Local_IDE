@@ -19,13 +19,15 @@ namespace Icm
         public const string FlowsDir = "flows";
         public const string KbDir = "kb";
         public const string ToolsDir = "tools";
-        public const string RefdocsDir = "refdocs";
+        public const string RefdocsDir = "refdocs";          // per-machine runtime: caches + local rebuilds (gitignored)
+        public const string RefdocsSeedDir = "refdocs-seed"; // tracked, shipped corpora; refdocs overrides it when present
 
         // Relative-path builders for the table/flow/refdocs conventions.
         public static string SchemaRel(string table) { return SchemasDir + "/" + table + ".json"; }
         public static string SampleRel(string table) { return SamplesDir + "/" + table + ".txt"; }
         public static string FlowRel(string name) { return FlowsDir + "/" + name + ".json"; }
         public static string RefdocRel(string corpus) { return RefdocsDir + "/" + corpus + ".json"; }
+        public static string RefdocSeedRel(string corpus) { return RefdocsSeedDir + "/" + corpus + ".json"; }
 
         // A routable reference file leads with a metadata block in an HTML comment (invisible in
         // rendered markdown, parseable): <!--icm { "id","title","doc_type","summary","keywords",

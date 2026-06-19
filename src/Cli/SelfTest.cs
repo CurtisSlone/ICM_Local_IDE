@@ -28,6 +28,7 @@ namespace Icm
             fail += Check("markdown parse", MarkdownParse);
             fail += Check("slash command parse", SlashParse);
             fail += Check("slash redirect + fence strip", SlashRedirect);
+            fail += Check("router gate", RouterGate);
 
             Console.WriteLine(fail == 0 ? "selftest: ALL PASS" : ("selftest: " + fail + " FAILED"));
             return fail;
@@ -144,6 +145,16 @@ namespace Icm
             if (cmd != "list" || rest != "") return false;
             Dispatcher.ParseCommand("/ASK   Foo bar ", out cmd, out rest);   // case-folded, trimmed
             return cmd == "ask" && rest == "Foo bar";
+        }
+
+        private static bool RouterGate()
+        {
+            var ids = new List<string>(new string[] { "answer", "csharp", "write_grounded" });
+            return Dispatcher.Gate("csharp", "high", ids) == Dispatcher.GateDecision.Match
+                && Dispatcher.Gate("csharp", "medium", ids) == Dispatcher.GateDecision.Match
+                && Dispatcher.Gate("csharp", "low", ids) == Dispatcher.GateDecision.Fallback
+                && Dispatcher.Gate("none", "high", ids) == Dispatcher.GateDecision.Fallback
+                && Dispatcher.Gate("bogus", "high", ids) == Dispatcher.GateDecision.Fallback;
         }
 
         private static bool SlashRedirect()

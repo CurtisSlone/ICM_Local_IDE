@@ -85,11 +85,22 @@ namespace Icm
         public Dictionary<string, object> EnvVars() { return Json.GetObject(Extra, "env"); }
     }
 
+    // Conversational-router behaviour for the terminal console. "confirm" (default) proposes the
+    // inferred flow and asks before running; "on" auto-runs a high-confidence match; "off" disables
+    // routing (plain text goes straight to /ask).
+    internal class Router
+    {
+        public string Autorun = "confirm";   // confirm | on | off
+        public bool Enabled() { return Autorun == "confirm" || Autorun == "on"; }
+        public bool AutoRunHigh() { return Autorun == "on"; }
+    }
+
     internal class Config
     {
         public string Name = "";
         public string Domain = "";
         public Models Models = new Models();
+        public Router Router = new Router();
         public string OllamaUrl = "http://localhost:11434"; // host and Ollama share the machine
         public List<Tool> Tools = new List<Tool>();
         // Opaque oracle config (e.g. the TSV table schemas, or where to find them). The host
@@ -111,6 +122,8 @@ namespace Icm
             c.Name = Json.GetStringOr(root, "name", "");
             c.Domain = Json.GetStringOr(root, "domain", "");
             c.Models = ResolveModels(root);
+            Dictionary<string, object> ro = Json.GetObject(root, "router");
+            if (ro != null) c.Router.Autorun = Json.GetStringOr(ro, "autorun", c.Router.Autorun);
             c.OllamaUrl = Json.GetStringOr(root, "ollama_url", c.OllamaUrl);
             foreach (object t in Json.GetArr(root, "tools"))
             {

@@ -19,10 +19,19 @@ namespace Icm
         public Dictionary<string, object> Extra = new Dictionary<string, object>();
     }
 
+    // Lightweight flow metadata for the conversational router's catalog (no nodes loaded).
+    internal class FlowInfo
+    {
+        public string Id = "";          // the file name without extension - how `icm flow <id>` refers to it
+        public string Name = "";
+        public string WhenToUse = "";   // the router's match surface ("use this when...")
+    }
+
     internal class Flow
     {
         public string Name = "";
         public string Description = "";
+        public string WhenToUse = "";   // router match text; falls back to Description
         public List<FlowNode> Nodes = new List<FlowNode>();
 
         public static Flow Load(string path)
@@ -38,6 +47,7 @@ namespace Icm
             var f = new Flow();
             f.Name = Json.GetStringOr(root, "name", Path.GetFileNameWithoutExtension(path));
             f.Description = Json.GetStringOr(root, "description", "");
+            f.WhenToUse = Json.GetStringOr(root, "whenToUse", f.Description);
             foreach (object o in Json.GetArr(root, "nodes"))
             {
                 var no = o as Dictionary<string, object>;

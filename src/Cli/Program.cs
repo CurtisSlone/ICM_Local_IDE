@@ -132,7 +132,7 @@ namespace Icm
             switch (s)
             {
                 case "open": case "chat": case "mcp": case "flow": case "validate":
-                case "docsearch": case "reindex": case "list": case "gen": case "selftest":
+                case "docsearch": case "reindex": case "list": case "flows": case "gen": case "selftest":
                 case "help": case "-h": case "--help": return true;
                 default: return false;
             }
@@ -226,6 +226,21 @@ namespace Icm
                     Indexer.Reindex(icm, delegate(string s) { Console.Error.WriteLine("  - " + s); });
                     break;
                 }
+                case "flows":
+                {
+                    string dir = Arg(args, 1);
+                    if (dir == null) throw new IcmError("usage: icm flows <dir>");
+                    Instance icmF = Instance.Open(dir);
+                    string fdir = System.IO.Path.Combine(icmF.Root, Conventions.FlowsDir);
+                    if (!System.IO.Directory.Exists(fdir)) { Console.WriteLine("(no flows/ dir)"); break; }
+                    string[] ff = System.IO.Directory.GetFiles(fdir, "*.json"); System.Array.Sort(ff, StringComparer.OrdinalIgnoreCase);
+                    foreach (string f in ff)
+                    {
+                        try { Flow fl = Flow.Load(f); Console.WriteLine("  " + System.IO.Path.GetFileNameWithoutExtension(f).PadRight(18) + " " + fl.WhenToUse); }
+                        catch (IcmError) { }
+                    }
+                    break;
+                }
                 case "list":
                 {
                     string dir = Arg(args, 1);
@@ -265,6 +280,7 @@ namespace Icm
             "  icm docsearch <dir> <corpus> <query...>   hybrid search a built refdocs corpus\n" +
             "  icm reindex <dir>               regenerate manifest.json from files' <!--icm--> blocks\n" +
             "  icm list  <dir> [--group G] [--type T] [--json]   enumerate the KB catalog\n" +
+            "  icm flows <dir>                 list the instance's workflows (the router's menu)\n" +
             "  icm gen   <dir> <prompt...>     one raw generate call\n" +
             "  icm selftest                    check the deterministic core (no model)\n" +
             "\n" +

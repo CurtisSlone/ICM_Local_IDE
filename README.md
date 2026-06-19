@@ -2,8 +2,10 @@
 
 `icm` runs **ICM** instances on a small, local language model, adding a deterministic *oracle* that
 checks the model's output. You point the host at a folder (an "instance") - a knowledge base, table
-schemas, scripts, and workflows - and it gives you a chat console, a small editor GUI, and an
-[MCP](https://modelcontextprotocol.io) server over that instance.
+schemas, scripts, and workflows - and operate it from a **terminal operator console**: `icm <dir>`
+opens the instance and drops you into a chat where you plan in natural language and act with slash
+commands (built to run inside a VSCode integrated terminal, like `code <dir>`). The same engine is
+also exposed over [MCP](https://modelcontextprotocol.io) and through an optional desktop GUI.
 
 It is Windows-native and dependency-light: it builds with the C# compiler that ships in the box with
 the .NET Framework (no SDK, no NuGet, no MSBuild) and talks to a local [Ollama](https://ollama.com)
@@ -45,8 +47,11 @@ be sent the exact errors and asked to try again, within a bound.
 
 Two guardrails keep this honest:
 
-- **The console is a dispatcher, not a chat.** Each turn is one constrained classify call
-  (`{intent, query}`); then code runs the chosen capability. The model never improvises a tool loop.
+- **The operator drives; the model never picks actions.** Slash commands dispatch deterministically;
+  plain text runs the conversational **router** - the model proposes a flow from the closed, authored
+  set, a deterministic gate keeps only a confident on-list match, and it runs after a `y/n` confirm or
+  falls back to `/ask`. `/chat` is free conversation, `/do` an opt-in classifier. The model never
+  improvises a tool loop.
 - **Tools are declared; the model only fills arguments.** A tool's command is authored in the
   instance, never invented by the model. *Which* tool runs is decided by an authored workflow or by a
   capable orchestrator (e.g. Claude over MCP) - never by an open local-model loop.
@@ -65,7 +70,7 @@ adds a machine check the frontier setup did not need.
 | Concern | ICM (frontier agent) | This host (local model) |
 | --- | --- | --- |
 | Navigating the folders | the agent reads them and picks what to load | code crawls: a constrained **enum pick** chooses the entry, then code reads and **injects** the scoped context |
-| Sequencing | the agent decides what runs next across numbered stages | a deterministic **dispatcher** (one constrained classify) and authored **flows** sequence the work |
+| Sequencing | the agent decides what runs next across numbered stages | explicit **slash commands** route to capabilities and authored **flows** sequence multi-step work; the model never picks the step (`/do` offers an opt-in classifier) |
 | Checking output | a human reviews each stage's file | a deterministic **oracle** gates table output, with bounded repair (the human still edits) |
 | Model output shape | trusted to format itself | **grammar/enum-constrained**, so only a valid shape can be emitted |
 | Tools | the agent calls local scripts / MCP as it sees fit | tools are **declared**; the model only fills arguments; *which* tool runs is a flow's or a frontier orchestrator's call |
@@ -79,11 +84,13 @@ server exposes - one engine, two callers: the local dispatcher, or a frontier mo
 
 ```mermaid
 flowchart TD
-    you([You]) -->|natural language| conv["Conversation layer<br/>rewrites follow-ups (non-load-bearing)"]
-    conv --> disp["Dispatcher<br/>one constrained classify call -> (intent, query)"]
+    you([You]) -->|plain text| disp["Router + dispatcher (code)<br/>plain text: propose flow (enum) -> gate -> confirm -> run, else /ask<br/>/command: deterministic dispatch"]
+    you -->|/command| disp
+    you -->|/chat| chat["Free chat<br/>plans, names a command (executes nothing)"]
+    chat --> you
 
-    disp -->|ask| crawl["Crawl the ICM (code)<br/>route -> read KB entry -> scope context"]
-    disp -->|propose / validate| build["Build table context (code)<br/>schema + header + examples"]
+    disp -->|/ask, /write| crawl["Crawl the ICM (code)<br/>route -> read KB entries -> scope context"]
+    disp -->|/propose, /validate| build["Build table context (code)<br/>schema + header + examples"]
 
     crawl --> mAsk["Local model<br/>pick entry (enum), draft grounded answer"]
     build --> mRow["Local model<br/>propose one table row"]
@@ -98,8 +105,8 @@ flowchart TD
     classDef codeNode fill:#e8f0fe,stroke:#4285f4,color:#111;
     classDef modelNode fill:#fef7e0,stroke:#f9ab00,color:#111;
     classDef oracleNode fill:#e6f4ea,stroke:#34a853,color:#111;
-    class conv,disp,crawl,build codeNode;
-    class mAsk,mRow modelNode;
+    class disp,crawl,build codeNode;
+    class chat,mAsk,mRow modelNode;
     class oracle oracleNode;
 ```
 
@@ -111,10 +118,13 @@ decides. Code does the crawling and the sequencing; the model only ever proposes
 
 Two Windows executables built from one shared codebase:
 
-- **`icm.exe`** - a console CLI: open / chat / mcp / flow / validate / gen / selftest.
-- **`icm-gui.exe`** - a small "VSCode-lite" GUI: a workspace file tree (add / rename / delete / edit,
-  confined to the opened folder), a text editor with a line-number gutter and find/replace, and a
-  chat panel that drives the same engine as the console.
+- **`icm.exe`** - the terminal operator console and CLI. `icm <dir>` opens the console on an instance
+  (VSCode-style), plus open / chat / mcp / flow / list / validate / gen / selftest. **This is the
+  primary interface.**
+- **`icm-gui.exe`** - an optional "VSCode-lite" desktop GUI over the same engine: a workspace file
+  tree (add / rename / delete / edit, confined to the opened folder), a text editor with a
+  line-number gutter and find/replace, and a chat panel. Secondary - reach for it if you want a
+  graphical workspace; everything it does is also available from the console.
 
 Prebuilt binaries are included in this folder, so you can run it without building anything.
 
@@ -129,12 +139,16 @@ change these per instance in `icm.config.json`, or override the URL with the `OL
 From this folder:
 
 ```
-.\icm.cmd selftest                              # verify the deterministic core (no model needed)
-.\icm.cmd open windows-icm                       # load + summarize the bundled instance
-.\icm-gui.cmd windows-icm                         # open the GUI on it
-.\icm.cmd chat windows-icm                        # operator console (needs Ollama)
-.\icm.cmd flow windows-icm csharp "a method that reverses a string"   # generate C# -> compile -> repair (needs Ollama)
+.\icm.cmd selftest                # verify the deterministic core (no model needed)
+.\icm.cmd open windows-icm        # load + summarize the bundled instance (no model)
+.\icm.cmd windows-icm             # open the operator console on it (VSCode-style; needs Ollama)
+.\icm.cmd flow windows-icm csharp "a method that reverses a string"   # run one flow non-interactively
+.\icm-gui.cmd windows-icm         # optional: the desktop GUI on it
 ```
+
+Inside the console you chat to plan and use slash commands to act - e.g. `/write a hex viewer > out\Hex.cs`
+generates verified C# straight into a file, and `/help` lists the commands. See
+[How the chat works](#how-the-chat-works).
 
 > **Why `.cmd` and not `.exe`?** Run the `.cmd` launchers, not the bare `.exe` files. On Windows 11
 > with Smart App Control on, an unsigned downloaded `.exe` is blocked from running directly; the
@@ -142,7 +156,10 @@ From this folder:
 > allows. See [Running under Smart App Control](#running-under-smart-app-control). Tip: add this
 > folder to your `PATH` and you can run `icm ...` / `icm-gui .` from anywhere.
 
-## The GUI
+## The GUI (optional)
+
+The terminal console is the primary interface; the GUI is a secondary, graphical way to work the same
+engine - reach for it if you want a file tree and editor alongside the chat.
 
 ```
 .\icm-gui.cmd                  # opens empty; use File > Open Folder
@@ -170,47 +187,62 @@ File tree: `Del` delete, `F2` rename, `Enter` open. Chat input: `Enter` or `Ctrl
 
 ## How the chat works
 
-The chat looks like a conversation but is a constrained router underneath. Each turn:
+The console never lets the weak local model decide what runs:
 
-1. **Conversation layer** (optional) - rewrites a follow-up like "now do the same for the other
-   table" into a standalone request. Non-load-bearing: a bad rewrite only costs a wrong intent.
-2. **Dispatcher** - one constrained call classifies the line into an intent and extracts the query.
-3. **Capability** - code runs the chosen capability deterministically:
-   - `ask` - answer a question, grounded in one knowledge-base entry.
-   - `validate` - run the oracle on a named table.
-   - `propose` - the proposer/oracle loop: the model proposes a new table row, the oracle validates
-     it, and on failure the exact errors are fed back for a bounded repair. On success the GUI offers
-     to insert the validated row into the table file (you review and save). If it can't converge, it
-     reports the oracle's verdict instead of writing a bad row.
-   - `make` - freeform generation that is not a table row.
+- **Default = the conversational router.** Any line *without* a leading `/` is matched against the
+  authored flows: the model proposes one (grammar-constrained to the real catalog), a deterministic
+  gate keeps only an on-list, confident pick, and it runs after a `y/n` confirm (mode `router.autorun`:
+  `confirm` / `on` / `off`). If nothing fits - or you asked a plain question - it falls back to a
+  grounded `/ask`. Unrecognized commands fall back to `/ask` too.
+- **Slash commands** - a line starting with `/` is dispatched **deterministically** by code (no
+  classify step) to a capability or flow:
+  - `/ask <q>` - answer grounded in the matching knowledge-base entry (this is the default).
+  - `/write <task>` - generate C#, compile it with the oracle, and repair until it builds.
+  - `/ps <task>` - generate PowerShell, parse-checked.
+  - `/list [group]` / `/search <query>` - enumerate the KB / hybrid-search the doc corpora.
+  - `/make <prompt>` - freeform generation (no grounding, no oracle).
+  - `/validate <table>` / `/propose <desc>` - the oracle path: validate a table, or have the model
+    propose a row the oracle gates (bounded repair; the GUI offers to insert a passing row).
+  - `/flow <name> <input>` - run any authored flow.
+  - `/chat <message>` - free conversation: the model plans with you and names the exact command to
+    run, but executes nothing (grounded in the KB catalog + `NOTES.md`).
+  - `/do <request>` - the opt-in classifier: let the dispatcher pick the intent and route it.
+  - `/note <text>` / `/notes` - append to / show `NOTES.md`, the persistent session memory.
+
+Append `> path` to any command to save its output to a file in the workspace (markdown fences are
+stripped, so a `.cs`/`.ps1` lands clean and the GUI opens it). Writes and `/note` lines are recorded
+in `NOTES.md`, which the chat reads back so a new session is not cold.
 
 ### Model seats, and yes - it still generates plain text
 
 A turn uses up to two model "seats", set per instance in `icm.config.json`:
 
-- the **dispatch** seat - a small model that makes the one constrained classify/route call;
-- the **generate** seat - the model that actually writes text: the grounded `ask` answer, the
-  freeform `make` output, and the proposed table row.
+- the **dispatch** seat - a small model used only by `/do` (and `/propose`'s table pick) for the
+  constrained classify/route call;
+- the **generate** seat - the model that writes text: casual chat, the grounded `/ask` answer, the
+  `/write` code, the freeform `/make` output, and proposed rows.
 
 They can be the same model (the example uses one for both) or two different models - a tiny model for
-dispatch and a larger one for generation, for instance.
-
-And yes, the local model still does ordinary generative text. `make` in the chat (and `icm gen` on
-the CLI) call the **generate** seat directly with **no oracle and no schema constraint** - you get
-plain model output. The oracle and the grammar constraints apply only to the structured capabilities
-(`propose` / `validate`); they never sit between you and free-form generation. The dispatch seat only
-ever does the routing - it is the generate seat that produces the prose.
+dispatch and a larger one for generation. And yes, the local model still does ordinary generative
+text: casual chat, `/make`, and `icm gen` call the **generate** seat directly with **no oracle and no
+schema constraint**. The oracle and the grammar constraints apply only to the structured paths
+(`/write`, `/propose`, `/validate`); they never sit between you and free-form chat.
 
 ## Commands
 
 ```
+icm <dir>                       open the operator console on an instance (VSCode-style; rel or abs path)
 icm open  <dir>                 load + summarize an instance
-icm chat  <dir>                 operator console (dispatcher; needs Ollama)
+icm chat  <dir>                 operator console (same as `icm <dir>`)
 icm mcp   <dir>                 serve the instance over MCP (stdio)
 icm flow  <dir> <name> [in...]  run an authored workflow (flows/<name>.json)
+icm list  <dir> [--group G] [--type T] [--json]   enumerate the KB catalog
+icm flows <dir>                 list the instance's workflows (the router's menu)
+icm docsearch <dir> <corpus> <query...>           hybrid search a built refdocs corpus
+icm reindex <dir>               regenerate manifest.json from files' <!--icm--> metadata blocks
 icm validate <dir> <table>      run the oracle on schemas/<table>.json + samples/<table>.txt
 icm gen   <dir> <prompt...>     one raw generate call (smoke-test the model)
-icm selftest                    check the deterministic core (oracle/json/tsv/paths; no model)
+icm selftest                    check the deterministic core (no model)
 ```
 
 `OLLAMA_URL` overrides the instance's configured `ollama_url`.
@@ -232,8 +264,29 @@ settings that matter most:
 ```
 
 - `generate` - writes the actual text (grounded answers, freeform `make`, proposed rows).
-- `dispatch` - the small classify/route call; omit it to reuse the `generate` model.
+- `dispatch` - the small classify/route call (and the conversational router's flow pick); omit it to
+  reuse the `generate` model.
 - `embed` - optional, reserved for embedding-based routing.
+
+**Conversational router.** Plain text in the console is matched to an authored flow (the model
+proposes from the closed catalog; a deterministic gate keeps only a confident, on-list pick). Control
+it per instance:
+
+```json
+"router": { "autorun": "confirm" }
+```
+
+- `confirm` (default) - propose the inferred flow and ask `y/n` before running it.
+- `on` - auto-run a high-confidence match; still ask for medium.
+- `off` - disable routing; plain text goes straight to `/ask`.
+
+Anything that doesn't match a flow falls back to a grounded `/ask`.
+
+**Search corpora.** `/search` and the `search` flow node read corpora from `refdocs-seed/`. The
+shipped `dotnet` (API signatures) and `dotnet_prose` (conceptual docs) corpora are committed there, so
+search works on a fresh clone. Embedding vectors are generated lazily on the first search and cached
+in `refdocs/` (gitignored, rebuilt on demand, and skipped gracefully when no embed model is present).
+Rebuild a corpus with the `build_*_docs` tools - they write to `refdocs/`, which overrides the seed.
 
 Use any models you have pulled in Ollama (`ollama pull <name>`, list with `ollama list`). The flat
 fields `model` / `embed_model` are also accepted as a fallback.
@@ -366,11 +419,55 @@ Run a flow with `icm flow <dir> <name> [input...]`, or expose it as a tool (`{"k
 
 ## Drive it from a frontier model over MCP
 
-`icm mcp <dir>` serves the instance over stdio JSON-RPC. `tools/list` advertises the instance's tools
-(with their input schemas) and `tools/call` runs them - command/script tools, the oracle, grounded
-answers, the propose loop, and whole flows. This is the same engine the local console uses, exposed so
-a capable orchestrator can sequence the tools while the local model keeps filling the narrow,
-oracle-checked slots.
+`icm mcp <dir>` serves the instance over stdio JSON-RPC. `tools/list` advertises:
+
+- the built-ins **`catalog`** (browse the KB: id, group, summary; optional `group`/`doc_type` filters)
+  and **`read_entry`** (read one entry's full text, routing metadata stripped),
+- the instance's **command/script tools** (with their input schemas), the **oracle** (`validate`), the
+  **propose** loop, and whole **flows** (`flow`-kind tools).
+
+`tools/call` runs them. This is the same engine the local console uses, exposed so a capable
+orchestrator (Claude, etc.) can browse → read → run while the local model keeps filling the narrow,
+oracle-checked slots. The frontier model does the loose inference ("what's the workflow for X?") and
+calls the matching flow/tool; the host executes it deterministically. (Orchestrating *existing*
+capabilities works today; having the frontier model author and register a brand-new flow is roadmap.)
+
+**Connect a client.** Because Smart App Control blocks the bare `.exe` (see below), point the client
+at the in-memory launcher `run-cli.ps1`, not `icm.exe`. Use absolute paths.
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "windows-icm": {
+      "command": "powershell",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+               "C:\\path\\to\\win_icm_code\\run-cli.ps1", "mcp",
+               "C:\\path\\to\\win_icm_code\\windows-icm"]
+    }
+  }
+}
+```
+
+Claude Code:
+
+```
+claude mcp add windows-icm -- powershell -NoProfile -ExecutionPolicy Bypass -File C:\path\to\win_icm_code\run-cli.ps1 mcp C:\path\to\win_icm_code\windows-icm
+```
+
+**Verify the server** without a client first: `powershell -NoProfile -File mcp-smoke.ps1` drives the
+full handshake (initialize / tools/list / catalog / read_entry / ping) over stdio and asserts the
+responses - run it after a build to confirm the MCP surface is healthy.
+
+## Security
+
+Opening an instance can run its declared **command/script tools** (PowerShell, external programs) on
+your machine - that is how the host does real work. **Only open instances you trust**, and skim their
+`icm.config.json` + `tools/` first. The local model never picks or runs tools on its own (it only
+proposes into oracle-checked slots), file I/O is sandboxed to the instance root, and the host's only
+network egress is to your local Ollama. The same trust rule applies when a frontier model drives the
+host over MCP. Full details: [SECURITY.md](SECURITY.md).
 
 ## Running under Smart App Control
 
@@ -413,10 +510,19 @@ Gui/             the GUI executable (WinForms): Gui, Native
 
 ## Status
 
-Working: instance loading, the oracle (validate / propose with bounded repair), grounded `ask`,
-script/command tools, authored flows, the chat dispatcher, the GUI, and the MCP server. Not yet
-implemented: embedding-based routing for large knowledge bases, cross-table reference checks in the
-oracle, and token streaming (turns print on completion).
+**Beta** - working and self-consistent; usable by a technical user who follows this README.
+
+Working: instance loading; the operator console (conversational router, slash commands, casual
+`/chat`, `NOTES.md` session memory, output redirect to files); the oracle (`validate` / `propose` with
+bounded repair) and the compiler/parser oracles for code; grounded `ask` and authored flows (including
+generate-compile-repair); hybrid BM25+embedding search with shipped corpora; KB enumeration
+(`catalog` / `list` / `flows`); the optional WinForms GUI (with markdown rendering); and the MCP server
+(verified by `mcp-smoke.ps1`).
+
+Not yet implemented: a frontier model authoring + registering *new* flows over MCP (it can run
+existing ones); embedding-based routing for the local tier (search uses embeddings, routing does not);
+token streaming (turns print on completion); cross-table reference checks in the oracle; and a built
+PowerShell docs corpus.
 
 ## License
 

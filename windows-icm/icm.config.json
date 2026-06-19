@@ -8,6 +8,7 @@
     "embed": "nomic-embed-text"
   },
   "ollama_url": "http://localhost:11434",
+  "router": { "autorun": "confirm" },
   "tools": [
     { "name": "ask", "kind": "kb_answer", "description": "Answer a Windows/C#/PowerShell question from the knowledge base (references, patterns, recipes)." },
     {

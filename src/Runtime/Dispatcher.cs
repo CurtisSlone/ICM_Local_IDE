@@ -32,6 +32,8 @@ namespace Icm
         private readonly Action<string> status;
         private readonly List<string> history = new List<string>(); // "you: ..." / "icm: ..." lines
         private Cancel cancel;                                       // the in-flight op's cancel handle
+        private string pendingFlowId;   // a router-proposed flow awaiting y/n confirmation
+        private string pendingArgs;
 
         public Dispatcher(Instance icm, string url, Action<string> status)
         {
@@ -50,10 +52,10 @@ namespace Icm
 
         // One turn: conversation rewrite (if there is history) -> classify -> run capability.
         // Never throws for model/oracle failures; it returns a TurnResult with IsError set.
-        // One turn. A line beginning with '/' is an explicit slash command (deterministic dispatch to
-        // a capability or flow). Anything else is casual chat with the model. This replaces "classify
-        // every line": the weak local model is unreliable at picking actions, so actions are explicit
-        // and chat is just chat. (/do still offers the old classify-and-route path on demand.)
+        // One turn. A '/' line is a slash command (deterministic dispatch). Plain text runs through the
+        // conversational ROUTER: the model proposes a flow from the closed catalog, a deterministic gate
+        // decides, and a confident match is run (after y/n confirmation by default) or falls back to
+        // /ask. /chat is free conversation; /do is the classify-and-route path.
         public TurnResult Turn(string line)
         {
             var r = new TurnResult();
@@ -62,21 +64,143 @@ namespace Icm
             if (line.Length == 0) { r.Text = ""; return r; }
             cancel = new Cancel();
 
+            // Resolve a pending router confirmation (a plain y/n answer to "Run the X flow?").
+            if (pendingFlowId != null && line[0] != '/')
+            {
+                if (IsAffirmative(line))
+                {
+                    string id = pendingFlowId, args = pendingArgs;
+                    pendingFlowId = null; pendingArgs = null;
+                    r.Intent = "flow:" + id;
+                    Status("router: running '" + id + "'");
+                    RunNamedFlow(id, args, r);
+                    return Done(r, line);
+                }
+                if (IsNegative(line))
+                { pendingFlowId = null; pendingArgs = null; r.Intent = "chat"; r.Text = "Cancelled."; return Done(r, line); }
+                pendingFlowId = null; pendingArgs = null; // anything else cancels the pending action, handled below
+            }
+
             if (line[0] == '/')
             {
                 RunSlash(line, r);
-                if (r.Intent != "clear")
-                { Remember("you: " + line); Remember("icm: " + (r.IsError ? r.Text : Truncate(r.Text, 400))); }
+                if (r.Intent != "clear") Done(r, line);
                 return r;
             }
 
-            r.Intent = "chat";
-            Status("chat");
-            try { r.Text = DoChat(line); }
-            catch (IcmError e) { r.IsError = true; r.Text = "[error] " + e.Message; }
+            // Plain text: conversational router (or straight to /ask when routing is off).
+            if (icm.Config.Router.Enabled()) RouteConversational(line, r);
+            else RunSlash("/ask " + line, r);
+            return Done(r, line);
+        }
+
+        private TurnResult Done(TurnResult r, string line)
+        {
             Remember("you: " + line);
             Remember("icm: " + (r.IsError ? r.Text : Truncate(r.Text, 400)));
             return r;
+        }
+
+        private static bool IsAffirmative(string s)
+        {
+            string t = s.Trim().ToLowerInvariant();
+            return t == "y" || t == "yes" || t == "yeah" || t == "yep" || t == "ok" || t == "okay" || t == "sure" || t == "run" || t == "do it" || t == "go";
+        }
+
+        private static bool IsNegative(string s)
+        {
+            string t = s.Trim().ToLowerInvariant();
+            return t == "n" || t == "no" || t == "nope" || t == "cancel" || t == "stop";
+        }
+
+        // --- the conversational router: propose a flow from the closed catalog, gate it, act ---
+
+        private class RouteResult { public string FlowId = ""; public string Args = ""; public string Confidence = "low"; }
+
+        internal enum GateDecision { Match, Fallback }
+
+        // Deterministic gate: a proposal only proceeds if it names an on-list flow with non-low
+        // confidence. Pure + static so SelfTest can cover it without the model.
+        internal static GateDecision Gate(string flowId, string confidence, List<string> validIds)
+        {
+            if (string.IsNullOrEmpty(flowId) || flowId == "none") return GateDecision.Fallback;
+            if (!validIds.Contains(flowId)) return GateDecision.Fallback;
+            if (confidence == "low") return GateDecision.Fallback;
+            return GateDecision.Match;
+        }
+
+        private void RouteConversational(string line, TurnResult r)
+        {
+            Status("router: matching a flow");
+            RouteResult rr = null;
+            try { rr = RouteFlow(line); }
+            catch (IcmError) { rr = null; }     // model down/failed -> fall back to ask
+
+            var ids = new List<string>();
+            foreach (FlowInfo fi in FlowCatalog()) ids.Add(fi.Id);
+
+            if (rr == null || Gate(rr.FlowId, rr.Confidence, ids) == GateDecision.Fallback)
+            { RunSlash("/ask " + line, r); return; }
+
+            // Auto-run only when configured AND the model is highly confident.
+            if (icm.Config.Router.AutoRunHigh() && rr.Confidence == "high")
+            {
+                r.Intent = "flow:" + rr.FlowId;
+                Status("router: running '" + rr.FlowId + "' (high)");
+                RunNamedFlow(rr.FlowId, rr.Args, r);
+                r.Text = "-> routed to `" + rr.FlowId + "` (high)\n\n" + r.Text;
+                return;
+            }
+
+            // Otherwise propose and wait for confirmation.
+            pendingFlowId = rr.FlowId; pendingArgs = rr.Args;
+            r.Intent = "router";
+            string argNote = string.IsNullOrEmpty(rr.Args) ? "" : " with: " + rr.Args;
+            r.Text = "This looks like the `" + rr.FlowId + "` flow (" + rr.Confidence + " confidence)" + argNote +
+                ".\nRun it? (y / n) - or type a slash command instead.";
+        }
+
+        private RouteResult RouteFlow(string request)
+        {
+            List<FlowInfo> flows = FlowCatalog();
+            if (flows.Count == 0) return null;
+            var ids = new List<string>();
+            var lines = new List<string>();
+            foreach (FlowInfo fi in flows) { ids.Add(fi.Id); lines.Add("- " + fi.Id + ": " + fi.WhenToUse); }
+            ids.Add("none");
+
+            object schema = Json.Schema(Json.Obj(
+                "flow_id", Json.EnumProp(ids),
+                "args", Json.StrProp(),
+                "confidence", Json.EnumProp(new string[] { "high", "medium", "low" })), "flow_id", "confidence");
+            string prompt =
+                "Route the operator's request to ONE workflow, or 'none' if no workflow fits (a plain " +
+                "question with no matching workflow is 'none'). Put the task/topic from their message in " +
+                "args. Rate confidence honestly.\n\nWorkflows:\n" + string.Join("\n", lines.ToArray()) +
+                "\n\nOperator: " + request + "\n\nReturn JSON {flow_id, args, confidence}.";
+            Dictionary<string, object> v = Ollama.GenerateJson(url, icm.Config.DispatchModel(), prompt, schema, 0.1, DispatchTimeoutMs, cancel);
+            var rr = new RouteResult();
+            rr.FlowId = Json.GetStringOr(v, "flow_id", "none");
+            rr.Args = Json.GetStringOr(v, "args", "");
+            rr.Confidence = Json.GetStringOr(v, "confidence", "low");
+            if (rr.Args.Length == 0) rr.Args = request;   // default the flow input to the raw line
+            return rr;
+        }
+
+        private List<FlowInfo> FlowCatalog()
+        {
+            var outl = new List<FlowInfo>();
+            string dir = System.IO.Path.Combine(icm.Root, Conventions.FlowsDir);
+            if (!System.IO.Directory.Exists(dir)) return outl;
+            string[] files;
+            try { files = System.IO.Directory.GetFiles(dir, "*.json"); } catch { return outl; }
+            System.Array.Sort(files, System.StringComparer.OrdinalIgnoreCase);
+            foreach (string f in files)
+            {
+                try { Flow fl = Flow.Load(f); outl.Add(new FlowInfo { Id = System.IO.Path.GetFileNameWithoutExtension(f), Name = fl.Name, WhenToUse = fl.WhenToUse }); }
+                catch (IcmError) { }
+            }
+            return outl;
         }
 
         // Split "/cmd the rest" into ("cmd", "the rest"); cmd is lowercased. Public for SelfTest.
@@ -114,6 +238,9 @@ namespace Icm
                     case "make":
                         if (rest.Length == 0) { Usage(r, "/make <prompt>"); break; }
                         r.Intent = Conventions.Intent.Make; r.Text = DoMake(rest); break;
+                    case "chat":
+                        if (rest.Length == 0) { Usage(r, "/chat <message>"); break; }
+                        r.Intent = "chat"; r.Text = DoChat(rest); break;
                     case "write": case "build":
                         if (rest.Length == 0) { Usage(r, "/write <task>"); break; }
                         RunNamedFlow("write_grounded", rest, r); break;
@@ -131,6 +258,15 @@ namespace Icm
                     }
                     case "list": case "ls":
                         r.Text = (icm.Manifest != null) ? CatalogOr(rest) : "(no manifest.json)"; break;
+                    case "flows":
+                    {
+                        var fl = FlowCatalog();
+                        if (fl.Count == 0) { r.Text = "(no flows in flows/)"; break; }
+                        var sb = new StringBuilder();
+                        foreach (FlowInfo fi in fl) sb.Append("- " + fi.Id + ": " + fi.WhenToUse + "\n");
+                        r.Text = sb.ToString().TrimEnd();
+                        break;
+                    }
                     case "search": case "docs":
                         r.Text = DoSearch(rest); break;
                     case "validate":
@@ -165,7 +301,13 @@ namespace Icm
                     case "quit": case "exit": case "q":
                         r.Intent = Conventions.Intent.Quit; r.Text = "bye"; break;
                     default:
-                        r.Text = "Unknown command '/" + cmd + "'. Try /help."; break;
+                    {
+                        // Everything that is not a recognized command defaults to /ask on the whole line.
+                        string q = rest.Length > 0 ? cmd + " " + rest : cmd;
+                        if (q.Length == 0) { r.Text = Help(); break; }
+                        r.Intent = Conventions.Intent.Ask; r.Text = DoAsk(q);
+                        break;
+                    }
                 }
             }
             catch (IcmError e) { r.IsError = true; r.Text = "[error] " + e.Message; }
@@ -672,11 +814,14 @@ namespace Icm
                 "  /validate <table>        run the oracle on a data table\n" +
                 "  /propose <description>   propose a table row, oracle-validated\n" +
                 "  /flow <name> <input>     run any flow by name\n" +
+                "  /flows                   list the workflows the router can match\n" +
+                "  /chat <message>          free conversation with the model (not grounded)\n" +
                 "  /note <text>  /notes     add to / show NOTES.md (session memory)\n" +
                 "  /do <request>            let the dispatcher classify and route it\n" +
                 "  /clear   /help   /quit\n\n" +
                 "Append ' > path' to save a command's output to a file, e.g. /write a hex viewer > out/Hex.cs\n" +
-                "Anything without a leading '/' is casual chat with the model.";
+                "Just type what you want - it is matched to a workflow and run after you confirm (y/n);\n" +
+                "if nothing fits, or you ask a question, it falls back to a grounded /ask.";
         }
     }
 }

@@ -1,6 +1,7 @@
 {
   "name": "answer",
   "description": "Grounded answer: route to a reference entry, read it, answer only from that text.",
+  "whenToUse": "Answer a question or explain a concept strictly from one knowledge-base entry.",
   "nodes": [
     { "id": "route",  "kind": "route",  "inputs": ["request"],            "outputs": ["entry_id"] },
     { "id": "read",   "kind": "read",   "inputs": ["entry_id"],           "outputs": ["context"] },

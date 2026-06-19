@@ -1,6 +1,7 @@
 {
   "name": "write_grounded",
   "description": "Generate C# 5 code grounded in EVERY relevant KB entry. route_many picks the patterns/references/snippets that apply (not just one), reads them all, then generates and compiles with csc, repairing until it builds. The enumeration step in action.",
+  "whenToUse": "Write or generate C# code that draws on several patterns or references at once; pulls everything relevant, compiles, and repairs until it builds.",
   "nodes": [
     { "id": "pick",  "kind": "route_many", "inputs": ["request"],   "outputs": ["entry_ids"], "maxK": 3 },
     { "id": "read",  "kind": "read",       "inputs": ["entry_ids"], "outputs": ["context"] },

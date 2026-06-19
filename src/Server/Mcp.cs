@@ -13,7 +13,8 @@ namespace Icm
 {
     internal static class Mcp
     {
-        private const string ProtocolVersion = "2025-11-25";
+        private const string ProtocolVersion = "2025-11-25";  // advertised default
+        private const string HostVersion = "0.1.0";
         private const int MaxProblemsShown = 40;
 
         private static object InputSchema(Tool t)
@@ -98,10 +99,16 @@ namespace Icm
             switch (method)
             {
                 case "initialize":
+                {
+                    // Echo the client's requested protocol version when present (best compatibility);
+                    // fall back to our advertised default.
+                    string clientVer = Json.Pointer(msg, "/params/protocolVersion") as string;
+                    string ver = string.IsNullOrEmpty(clientVer) ? ProtocolVersion : clientVer;
                     return Ok(id, Json.Obj(
-                        "protocolVersion", ProtocolVersion,
+                        "protocolVersion", ver,
                         "capabilities", Json.Obj("tools", Json.Obj("listChanged", false)),
-                        "serverInfo", Json.Obj("name", icm.Config.Name, "version", "0.1.0")));
+                        "serverInfo", Json.Obj("name", icm.Config.Name, "version", HostVersion)));
+                }
                 case "notifications/initialized":
                     return null;
                 case "ping":

@@ -12,7 +12,8 @@ namespace Icm
             Console.WriteLine("ICM operator console - '" + icm.Config.Name + "'");
             Console.WriteLine("  dispatch seat: " + icm.Config.DispatchModel() +
                               "   generate seat: " + icm.Config.Models.Generate + "   ollama: " + url);
-            Console.WriteLine("  chat normally; use slash commands to act ('/help' for the list, 'quit' to exit).\n");
+            Console.WriteLine("  just type what you want - it's matched to a workflow (you confirm before it runs),");
+            Console.WriteLine("  or use slash commands directly. '/help' lists them, '/flows' shows workflows, 'quit' exits.\n");
 
             // Status trace goes to stderr so stdout carries only the conversation.
             var d = new Dispatcher(icm, url, delegate(string s) { Console.Error.WriteLine("  - " + s); });
