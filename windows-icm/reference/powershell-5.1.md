@@ -30,6 +30,13 @@ model trained on modern PowerShell will use 7-only syntax that fails to parse or
 - **`$?`** is `$false` after a native exe's stderr is redirected with `2>&1`; check `$LASTEXITCODE`
   for native exit status, not `$?`.
 - Prefer `[System.IO.File]::ReadAllText` / `Get-Content -Raw` for whole-file reads.
+- **A typed `param` silently coerces every assignment to that variable, and variables are
+  case-insensitive.** So in a script with `param([string] $Proj)`, writing
+  `$proj = Get-Content x.json | ConvertFrom-Json` does NOT give you an object - `$proj` *is* `$Proj`,
+  still `[string]`-constrained, so the object is coerced to `"@{name=...; files=System.Object[]}"`.
+  Symptoms: `.property` lookups fail ("property cannot be found") and re-serializing writes a quoted
+  string. Fix: never reuse a typed param's name for parsed data - load into a differently-named var
+  (`$meta = ... | ConvertFrom-Json`).
 
 ## Parsing without running (the oracle)
 Validate a script's syntax without executing it:

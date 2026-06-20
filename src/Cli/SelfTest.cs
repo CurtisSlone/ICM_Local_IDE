@@ -31,6 +31,7 @@ namespace Icm
             fail += Check("router gate", RouterGate);
             fail += Check("flow lint", FlowLintCheck);
             fail += Check("command aliases", CommandAliases);
+            fail += Check("split inputs (head/tail)", SplitInputsTest);
             fail += Check("embedder rank", EmbedderRank);
 
             Console.WriteLine(fail == 0 ? "selftest: ALL PASS" : ("selftest: " + fail + " FAILED"));
@@ -171,6 +172,19 @@ namespace Icm
             if (a == null || a.Tool != "build_csharp" || a.Arg != "src") return false;
             if (c.FindCommand("write").Flow != "write_grounded") return false;
             return c.FindCommand("nope") == null;
+        }
+
+        private static bool SplitInputsTest()
+        {
+            // Head tokens map 1:1; the LAST input captures the remainder (so a description with spaces
+            // and an embedded path both survive intact).
+            var names = new System.Collections.Generic.List<string>(new string[] { "proj", "request" });
+            var d = Dispatcher.SplitInputs(names, "FunnyApp add a TCP driver to src\\Drivers");
+            if (d["proj"].ToString() != "FunnyApp") return false;
+            if (d["request"].ToString() != "add a TCP driver to src\\Drivers") return false;
+            // Single-name list: everything is the remainder.
+            var one = new System.Collections.Generic.List<string>(new string[] { "request" });
+            return Dispatcher.SplitInputs(one, "  hello world  ")["request"].ToString() == "hello world";
         }
 
         private static bool FlowLintCheck()

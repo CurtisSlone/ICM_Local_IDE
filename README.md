@@ -1,5 +1,10 @@
 # A local-model host for Interpretable Context Methodology (ICM)
 
+> **Final beta.** Feature-complete and self-consistent for single-operator local use: download the
+> folder, install Ollama + two models, and run via the `.cmd` launchers - no SDK, no build step
+> required (prebuilt binaries are included). See [Getting Started](#getting-started). Known issues and
+> fixes are in `CLAUDE.md`.
+
 `icm` runs **ICM** instances on a small, local language model, adding a deterministic *oracle* that
 checks the model's output. You point the host at a folder (an "instance") - a knowledge base, table
 schemas, scripts, and workflows - and operate it from a **terminal operator console**: `icm <dir>`
@@ -158,8 +163,14 @@ URL with `OLLAMA_URL`. `selftest`, `validate`, and script tools need no model.
 - Type a plain question - you get a grounded answer from the knowledge base.
 - `/flows` lists what it can do; `/help` lists every command.
 - `/write a method that reverses a string` - generates C#, compiles it, and repairs until it builds.
+- Build a whole multi-file app: `/new Calc console`, `/add Calc src\Program.cs a CLI calculator`,
+  `/build Calc`, `/run out\Calc\dist\Calc.exe`. Modify existing code with `/refactor`, `/fix`, `/edit`.
 - Append `> out\Reverse.cs` to any command to save its output to a file.
 - `/chat <message>` for free conversation; `/note <text>` to jot session memory.
+
+The bundled `windows-icm\out\` folder ships **example projects this tool generated** (a calculator,
+an arithmetic-expression evaluator, a key-value store, a tic-tac-toe and a paint GUI, and more);
+`Tests\COMPLEX_TEST_LOG.md` is a transcript of building them, local-model token counts included.
 
 See [How the chat works](#how-the-chat-works) for the full model. Prefer one-shot runs?
 `.\icm.cmd flow windows-icm csharp "a string reverser"` runs a single flow; `.\icm.cmd open windows-icm`
@@ -549,16 +560,23 @@ Gui/             the GUI executable (WinForms): Gui, Native
 
 ## Status
 
-**Beta** - working and self-consistent; usable by a technical user who follows this README.
+**Final beta** - feature-complete and self-consistent for single-operator local use; usable by a
+technical user who follows this README. Verified by three model-free checks: `.\icm.cmd selftest`
+(deterministic core), `project-smoke.ps1` (the project tool chain), and `mcp-smoke.ps1` (the MCP
+handshake).
 
 Working: instance loading; the operator console (conversational router, slash commands, casual
 `/chat`, `NOTES.md` session memory, output redirect to files); the oracle (`validate` / `propose` with
 bounded repair) and the compiler/parser oracles for code; grounded `ask` and authored flows (including
-generate-compile-repair); hybrid BM25+embedding search with shipped corpora; **embedder-narrowed
-routing** (the `embed` seat ranks flows / KB entries before the model picks); KB enumeration
-(`catalog` / `list` / `flows`); **console token streaming** for freeform generation (`/ask`, `/make`,
-`/chat`, and flow `generate`/`answer` nodes print token-by-token; the legacy GUI does not); the legacy
-WinForms GUI (with markdown rendering); and the MCP server (verified by `mcp-smoke.ps1`).
+generate-compile-repair); **multi-file project lifecycle** (`/new`, `/add`, `/build`, `/run` with
+on-disk project memory and a whole-project compile oracle); **surgical edits** (`/refactor`, `/fix`,
+`/edit`); hybrid BM25+embedding search with shipped corpora; **embedder-narrowed routing** (the
+`embed` seat ranks flows / KB entries before the model picks); KB enumeration (`catalog` / `list` /
+`flows`); **console token streaming** plus a **local-model token meter** (per turn and, over MCP, at
+the boundary - so you can measure what a driving frontier offloads to the local model); the legacy
+WinForms GUI (with markdown rendering); and the MCP server (verified by `mcp-smoke.ps1`). The bundled
+`windows-icm` knowledge base covers C# (in-box / C# 5), PowerShell, WinForms, GoF patterns,
+concurrency, data structures + algorithms, and conventions - all compile-verified.
 
 Not yet implemented: a frontier model authoring + registering *new* flows over MCP (it can run
 existing ones); cross-table reference checks in the oracle; and a built PowerShell docs corpus.

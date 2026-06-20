@@ -1,0 +1,8 @@
+/nologo
+/target:exe
+/langversion:5
+/warn:4
+/reference:System.dll
+/reference:System.Core.dll
+/out:dist\Calc.exe
+/recurse:src\*.cs

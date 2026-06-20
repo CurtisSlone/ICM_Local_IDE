@@ -1,0 +1,29 @@
+﻿{
+    "name":  "TicTacToe",
+    "kind":  "winforms",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/TicTacToe.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll",
+                       "System.Drawing.dll",
+                       "System.Windows.Forms.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "entry / [STAThread] Main"
+                  },
+                  {
+                      "path":  "src/Ui/MainForm.cs",
+                      "role":  "Windows Forms UI for tic-tac-toe game with 3x3 grid and new game button."
+                  },
+                  {
+                      "path":  "src/Core/Game.cs",
+                      "role":  "Core game logic class implementing tic-tac-toe rules and state management."
+                  }
+              ]
+}

@@ -39,13 +39,23 @@ namespace Icm
                 if (line == "quit" || line == "exit" || line == ":q") break;
 
                 firstToken = true;
+                long pTok = TokenMeter.Prompt, eTok = TokenMeter.Eval; int pCalls = TokenMeter.Calls;
                 TurnResult r = d.Turn(line);
                 if (r.Intent == Conventions.Intent.Quit) break;
                 if (r.Intent == "clear") { Console.Clear(); continue; }
                 if (r.Streamed) { Console.WriteLine(); Console.WriteLine(); }   // already on screen; end the line + space
                 else if (r.IsError) Console.Error.WriteLine("\n" + r.Text + "\n");
                 else Console.WriteLine("\n" + r.Text + "\n");
+
+                // Show how much the LOCAL model did this turn (work kept off the frontier bill).
+                int dCalls = TokenMeter.Calls - pCalls;
+                if (dCalls > 0)
+                    Console.WriteLine("  [local model: " + (TokenMeter.Eval - eTok) + " generated + " +
+                        (TokenMeter.Prompt - pTok) + " prompt tok, " + dCalls + " call(s)]\n");
             }
+            if (TokenMeter.Calls > 0)
+                Console.WriteLine("session local tokens: " + TokenMeter.Eval + " generated + " + TokenMeter.Prompt +
+                    " prompt = " + TokenMeter.Total + " across " + TokenMeter.Calls + " call(s)");
             Console.WriteLine("bye");
         }
     }

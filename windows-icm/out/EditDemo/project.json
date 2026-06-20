@@ -1,0 +1,23 @@
+﻿{
+    "name":  "EditDemo",
+    "kind":  "console",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/EditDemo.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "entry point"
+                  },
+                  {
+                      "path":  "src/Core/Stats.cs",
+                      "role":  "Provides static average calculation for integer arrays with empty input validation."
+                  }
+              ]
+}

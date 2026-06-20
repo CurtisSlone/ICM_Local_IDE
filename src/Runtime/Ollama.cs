@@ -47,9 +47,29 @@ namespace Icm
         }
     }
 
+    // Process-wide tally of local-model token usage, so the console can show the operator how much
+    // work the LOCAL model did (and therefore did NOT cost in frontier tokens). Ollama reports
+    // prompt_eval_count (tokens read) and eval_count (tokens generated) on each /api/generate reply.
+    internal static class TokenMeter
+    {
+        public static long Prompt;
+        public static long Eval;
+        public static int Calls;
+        public static void Record(long prompt, long eval) { Prompt += prompt; Eval += eval; Calls++; }
+        public static long Total { get { return Prompt + Eval; } }
+    }
+
     internal static class Ollama
     {
         private const int NumCtx = 8192; // Ollama default 2048 silently truncates long prompts.
+
+        private static long LongOf(Dictionary<string, object> o, string key)
+        {
+            object v;
+            if (o == null || !o.TryGetValue(key, out v)) return 0;
+            double? d = Json.ToDouble(v);
+            return d.HasValue ? (long)d.Value : 0;
+        }
 
         private static string Send(string url, string method, string path, string body, int timeoutMs, Cancel cancel)
         {
@@ -125,6 +145,7 @@ namespace Icm
             string response = Json.GetString(parsed, "response");
             if (response == null)
                 throw new IcmError("no 'response' field in Ollama reply: " + raw);
+            TokenMeter.Record(LongOf(parsed, "prompt_eval_count"), LongOf(parsed, "eval_count"));
             return response.Trim();
         }
 
@@ -178,7 +199,11 @@ namespace Icm
                             if (obj == null) continue;
                             string piece = Json.GetString(obj, "response");
                             if (!string.IsNullOrEmpty(piece)) { sb.Append(piece); if (onToken != null) onToken(piece); }
-                            if (Json.GetBool(obj, "done", false)) break;
+                            if (Json.GetBool(obj, "done", false))
+                            {
+                                TokenMeter.Record(LongOf(obj, "prompt_eval_count"), LongOf(obj, "eval_count"));
+                                break;
+                            }
                         }
                     }
                 }

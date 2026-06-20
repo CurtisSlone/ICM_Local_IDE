@@ -59,7 +59,8 @@ $csc = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if (-not (Test-Path $csc)) { $csc = "C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe" }
 if (-not (Test-Path $csc)) { throw "csc.exe (.NET Framework C# compiler) not found." }
 
-# Flat folder: one-level glob is enough. For nested folders, enumerate every .cs file instead.
+# Flat folder: one-level glob is enough. For a nested tree, use -recurse:src\*.cs instead
+# (the in-box csc supports it) or move to a response.rsp project layout - see project-layout.
 $src = Get-ChildItem "$root\*.cs" | ForEach-Object { $_.FullName }
 
 & $csc -nologo -noconfig -optimize+ -langversion:5 -warn:4 -target:exe -platform:anycpu `
@@ -86,6 +87,8 @@ csc.exe -nologo -noconfig -optimize+ -langversion:5 -target:exe ^
 
 - Exactly one `Main` per executable. If you add more `.cs` files, keep their entry points out (or
   use `-main:App.Program` to disambiguate).
+- This is the single-file/flat starting point. For a structured multi-file project (src/Core,
+  src/Drivers, dist/, response.rsp, on-disk memory) graduate to the project-layout reference.
 - `csc` treats `/` as an option prefix - pass paths with backslashes or quote them.
 - C# 5 only: no string interpolation (`$"..."`), no expression-bodied members, no `?.`. Use string
   concatenation as shown.

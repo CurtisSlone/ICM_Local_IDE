@@ -1,0 +1,19 @@
+﻿{
+    "name":  "RepairDemo",
+    "kind":  "console",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/RepairDemo.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "src\\Program.cs is a console app using C# string interpolation and modern tuple syntax to greet users with configurable name and count."
+                  }
+              ]
+}

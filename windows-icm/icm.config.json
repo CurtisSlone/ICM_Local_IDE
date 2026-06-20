@@ -50,7 +50,64 @@
     { "name": "write_grounded", "kind": "flow", "flow": "write_grounded", "description": "Generate C# 5 code grounded in EVERY relevant KB entry (multi-pick), compile it, and repair until it builds." },
     { "name": "write_winforms", "kind": "flow", "flow": "winforms", "description": "Generate a WinForms desktop GUI app, compile it as a winexe with the WinForms references, and repair until it builds." },
     { "name": "capture_snippet", "kind": "flow", "flow": "snippet", "description": "Capture a reusable code snippet as a ready-to-save snippet file (icm metadata block + code) for the snippets/ layer." },
-    { "name": "write_powershell", "kind": "flow", "flow": "powershell", "description": "Generate PowerShell grounded in the KB, parse-check it, and repair until it parses." }
+    { "name": "write_powershell", "kind": "flow", "flow": "powershell", "description": "Generate PowerShell grounded in the KB, parse-check it, and repair until it parses." },
+    {
+      "name": "new_project",
+      "kind": "command",
+      "description": "Scaffold a structured project under out\\<name> (src/Core + src/Drivers, response.rsp, build.ps1, project.json, PROJECT.md). Arg: spec = \"<name> [console|winforms]\".",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/new_project.ps1", "{spec}"],
+      "inputSchema": { "type": "object", "properties": { "spec": { "type": "string", "description": "project name, optionally followed by console|winforms" } }, "required": ["spec"] },
+      "timeout": 30
+    },
+    {
+      "name": "build_project",
+      "kind": "command",
+      "description": "Build a whole project via its response.rsp (csc -noconfig @response.rsp) to a persistent exe. Arg: proj = a project name (under out\\) or the project root path.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/build_project.ps1", "{proj}"],
+      "inputSchema": { "type": "object", "properties": { "proj": { "type": "string", "description": "project name or root path" } }, "required": ["proj"] },
+      "timeout": 120
+    },
+    {
+      "name": "read_project",
+      "kind": "command",
+      "description": "Show a project's state and grounding context: PROJECT.md, project.json, the src tree with each file's role, manifest drift, and an adapter template. Arg: proj.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/read_project.ps1", "{proj}", "{include}"],
+      "inputSchema": { "type": "object", "properties": { "proj": { "type": "string", "description": "project name or root path" }, "include": { "type": "string", "description": "default | core | all (how much source to inline)" } }, "required": ["proj"] },
+      "timeout": 30
+    },
+    {
+      "name": "stage_and_build",
+      "kind": "command",
+      "description": "Write a candidate C# file into a project's src tree and build the WHOLE project; report OK or the compiler diagnostics. The add_file flow's oracle. Code on stdin.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/stage_and_build.ps1", "-Proj", "{proj}", "-Path", "{path}"],
+      "inputSchema": { "type": "object", "properties": { "proj": { "type": "string" }, "path": { "type": "string", "description": "target rel path under src\\, .cs" }, "code": { "type": "string", "description": "complete C# source" } }, "required": ["proj", "path", "code"] },
+      "stdin": "code",
+      "timeout": 120
+    },
+    {
+      "name": "register_file",
+      "kind": "command",
+      "description": "Record a newly added file in a project's on-disk memory: add it to project.json.files and append a PROJECT.md changelog line. Idempotent.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/register_file.ps1", "-Proj", "{proj}", "-Path", "{path}", "-Role", "{role}"],
+      "inputSchema": { "type": "object", "properties": { "proj": { "type": "string" }, "path": { "type": "string" }, "role": { "type": "string" } }, "required": ["proj", "path", "role"] },
+      "timeout": 30
+    },
+    {
+      "name": "read_file",
+      "kind": "command",
+      "description": "Print one project source file verbatim. Used to ground a surgical edit on the file's exact current contents.",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/read_file.ps1", "-Proj", "{proj}", "-Path", "{path}"],
+      "inputSchema": { "type": "object", "properties": { "proj": { "type": "string" }, "path": { "type": "string", "description": "path to a file under the project" } }, "required": ["proj", "path"] },
+      "timeout": 30
+    },
+    {
+      "name": "log_edit",
+      "kind": "command",
+      "description": "Append an 'edited' line to a project's PROJECT.md changelog (records an edit in the on-disk memory).",
+      "command": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/log_edit.ps1", "-Proj", "{proj}", "-Path", "{path}", "-Summary", "{summary}"],
+      "inputSchema": { "type": "object", "properties": { "proj": { "type": "string" }, "path": { "type": "string" }, "summary": { "type": "string" } }, "required": ["proj", "path", "summary"] },
+      "timeout": 30
+    }
   ],
   "commands": [
     { "name": "write",    "flow": "write_grounded", "help": "generate C# grounded in the KB, compile, repair" },
@@ -59,6 +116,15 @@
     { "name": "winforms", "flow": "winforms",       "help": "generate a WinForms GUI app, compile, repair" },
     { "name": "snippet",  "flow": "snippet",        "help": "capture a reusable snippet file" },
     { "name": "compile",  "tool": "build_csharp", "arg": "src", "help": "build a workspace .cs to a runnable .exe" },
-    { "name": "run",      "launch": "run_app",      "help": "launch a built .exe (detached, in-memory)" }
+    { "name": "run",      "launch": "run_app",      "help": "launch a built .exe (detached, in-memory)" },
+
+    { "name": "new",     "tool": "new_project",  "arg": "spec", "help": "scaffold a project: new <name> [console|winforms]" },
+    { "name": "add",     "flow": "add_file", "inputs": ["proj", "request"], "help": "add a file to a project: add <project> <description|path>" },
+    { "name": "build",   "tool": "build_project", "arg": "proj", "help": "build a whole project: build <project>" },
+    { "name": "project", "tool": "read_project", "arg": "proj", "help": "show a project's state/memory: project <project>" },
+
+    { "name": "edit",     "flow": "edit_file", "inputs": ["proj", "path", "request"], "help": "edit a file: edit <project> <path> <change>" },
+    { "name": "refactor", "flow": "edit_file", "inputs": ["proj", "path", "request"], "help": "refactor a file (preserve behavior): refactor <project> <path> <goal>" },
+    { "name": "fix",      "flow": "edit_file", "inputs": ["proj", "path", "request"], "help": "fix a file from an error or recommendation: fix <project> <path> <error-or-note>" }
   ]
 }

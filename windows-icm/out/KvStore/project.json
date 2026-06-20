@@ -1,0 +1,31 @@
+﻿{
+    "name":  "KvStore",
+    "kind":  "console",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/KvStore.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "Program.cs implements command-line key-value store with memory and file backends."
+                  },
+                  {
+                      "path":  "src/Drivers/IKvStore.cs",
+                      "role":  "IKvStore defines a simple key-value store interface with get, set, delete, and keys operations."
+                  },
+                  {
+                      "path":  "src/Drivers/InMemoryKvStore.cs",
+                      "role":  "In-memory key-value store implementation using Dictionary."
+                  },
+                  {
+                      "path":  "src/Drivers/FileKvStore.cs",
+                      "role":  "File-based key-value store persisting data in kv.txt with line-oriented key=value format."
+                  }
+              ]
+}

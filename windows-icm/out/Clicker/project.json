@@ -1,0 +1,25 @@
+﻿{
+    "name":  "Clicker",
+    "kind":  "winforms",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/Clicker.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll",
+                       "System.Drawing.dll",
+                       "System.Windows.Forms.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "entry / [STAThread] Main"
+                  },
+                  {
+                      "path":  "src/Ui/MainForm.cs",
+                      "role":  "click-counter window"
+                  }
+              ]
+}

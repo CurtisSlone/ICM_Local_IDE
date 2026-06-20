@@ -108,6 +108,10 @@ namespace Icm
         public string Launch;
         public string Arg;      // for Tool: the argument name `rest` maps to (else stdin / first required)
         public string Help = "";
+        // for Flow: ordered input names. The first (n-1) take one whitespace token each; the LAST
+        // captures the remainder of the line. Generic head/tail mapping - the host knows the slot
+        // names the instance declared, never their meaning. Null = the whole line maps to "request".
+        public List<string> Inputs;
     }
 
     internal class Config
@@ -157,6 +161,12 @@ namespace Icm
                 a.Launch = Json.GetString(co, "launch");
                 a.Arg = Json.GetString(co, "arg");
                 a.Help = Json.GetStringOr(co, "help", "");
+                List<object> ins = Json.GetArr(co, "inputs");
+                if (ins.Count > 0)
+                {
+                    a.Inputs = new List<string>();
+                    foreach (object o in ins) if (o != null) a.Inputs.Add(o.ToString());
+                }
                 if (a.Name.Length > 0) c.Commands.Add(a);
             }
             object oracle;

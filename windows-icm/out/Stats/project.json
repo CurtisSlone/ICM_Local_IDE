@@ -1,0 +1,35 @@
+﻿{
+    "name":  "Stats",
+    "kind":  "console",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/Stats.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "entry point: parse args, print stats via Core.Statistics"
+                  },
+                  {
+                      "path":  "src/Core/Greeter.cs",
+                      "role":  "domain: build the greeting"
+                  },
+                  {
+                      "path":  "src/Drivers/IOutput.cs",
+                      "role":  "output seam (interface)"
+                  },
+                  {
+                      "path":  "src/Drivers/ConsoleOutput.cs",
+                      "role":  "IOutput impl over the console"
+                  },
+                  {
+                      "path":  "src/Core/Statistics.cs",
+                      "role":  "domain: mean/min/max over doubles"
+                  }
+              ]
+}

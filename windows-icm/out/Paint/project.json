@@ -1,0 +1,25 @@
+﻿{
+    "name":  "Paint",
+    "kind":  "winforms",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/Paint.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll",
+                       "System.Drawing.dll",
+                       "System.Windows.Forms.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "entry / [STAThread] Main"
+                  },
+                  {
+                      "path":  "src/Ui/MainForm.cs",
+                      "role":  "Main form for freehand drawing app with canvas, color/width controls, clear/save functionality."
+                  }
+              ]
+}

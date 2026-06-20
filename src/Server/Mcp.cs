@@ -11,6 +11,32 @@ using System.Collections.Generic;
 
 namespace Icm
 {
+    // Frontier-cost meter for the MCP boundary. When a STRONG model drives this ICM over stdio, its
+    // token cost is exactly what crosses this boundary: the requests it sends (its output) and the
+    // results it reads back (its input). We tally the chars each way and estimate tokens (chars/4,
+    // including JSON-RPC overhead). This measures the "drive" arm directly; the "direct" arm (the
+    // frontier writing the code itself) is what you compare against - most of host->driver below is
+    // returned artifact text, which is the bulk a direct frontier would have had to emit as output.
+    internal static class McpMeter
+    {
+        public static long InChars, OutChars;
+        public static int Requests, ToolCalls;
+        public static long InTokens { get { return (InChars + 3) / 4; } }
+        public static long OutTokens { get { return (OutChars + 3) / 4; } }
+        public static long DriveTokens { get { return InTokens + OutTokens; } }
+        public static string Report()
+        {
+            return "frontier boundary meter (this MCP session)\n" +
+                   "  driver -> host (requests in): " + Requests + " msgs, " + InChars + " chars (~" + InTokens + " tok)\n" +
+                   "  host -> driver (results out): " + OutChars + " chars (~" + OutTokens + " tok)\n" +
+                   "  tool calls: " + ToolCalls + "\n" +
+                   "  FRONTIER DRIVE COST (in + out): ~" + DriveTokens + " tok\n" +
+                   "note: ~tok = chars/4 incl. JSON-RPC overhead. This is the frontier's I/O to drive the\n" +
+                   "local model. host->driver is large mostly because tool results echo the generated code -\n" +
+                   "that returned code is roughly what a frontier writing it ITSELF would have had to emit.";
+        }
+    }
+
     internal static class Mcp
     {
         private const string ProtocolVersion = "2025-11-25";  // advertised default
@@ -56,6 +82,9 @@ namespace Icm
                     "description", "Read one KB entry's full text by id (routing metadata stripped).",
                     "inputSchema", Json.Schema(Json.Obj("id", Json.StrProp()), "id")));
             }
+            tools.Add(Json.Obj("name", "meter",
+                "description", "Report this MCP session's frontier I/O so far (tokens the driver has spent sending calls and reading results). Use it to measure the cost of driving the local model.",
+                "inputSchema", Json.Obj("type", "object", "properties", new Dictionary<string, object>())));
             foreach (Tool t in icm.Config.Tools)
                 tools.Add(Json.Obj("name", t.Name, "description", t.Description, "inputSchema", InputSchema(t)));
             return Json.Obj("tools", tools.ToArray());
@@ -78,6 +107,7 @@ namespace Icm
                     if (eid == null) return ToolResult(id, "read_entry needs an 'id' argument", true);
                     return ToolResult(id, icm.ReadEntry(eid), false);
                 }
+                if (name == "meter") return ToolResult(id, McpMeter.Report(), false);
             }
             catch (IcmError e) { return ToolResult(id, e.Message, true); }
             return ToolResult(id, "unknown builtin: " + name, true);
@@ -117,11 +147,12 @@ namespace Icm
                     return Ok(id, ToolsList(icm));
                 case "tools/call":
                 {
+                    McpMeter.ToolCalls++;
                     string name = Json.Pointer(msg, "/params/name") as string;
                     if (name == null) name = "";
                     Dictionary<string, object> args = Json.AsObject(Json.Pointer(msg, "/params/arguments"));
                     if (args == null) args = new Dictionary<string, object>();
-                    if (name == "catalog" || name == "read_entry") return CallBuiltin(id, icm, name, args);
+                    if (name == "catalog" || name == "read_entry" || name == "meter") return CallBuiltin(id, icm, name, args);
                     Tool tool = null;
                     foreach (Tool t in icm.Config.Tools) if (t.Name == name) { tool = t; break; }
                     if (tool == null) return Err(id, -32602, "Unknown tool: " + name);
@@ -175,7 +206,12 @@ namespace Icm
                         if (req == null) req = "";
                         Flow flow = Flow.Load(icm.FlowPath(fname));
                         var engine = new FlowEngine(icm, disp, delegate(string s) { Console.Error.WriteLine("  - " + s); });
-                        Dictionary<string, object> state = engine.Run(flow, req);
+                        // Seed every supplied argument so multi-input flows (e.g. add_file: proj + request)
+                        // are drivable over MCP, not just single-"request" flows.
+                        var seed = new Dictionary<string, object>();
+                        foreach (KeyValuePair<string, object> kv in args) seed[kv.Key] = kv.Value;
+                        if (!seed.ContainsKey("request")) seed["request"] = req;
+                        Dictionary<string, object> state = engine.Run(flow, seed);
                         text = FlowResultText(flow, state);
                         object okv;
                         isError = state.TryGetValue("ok", out okv) && (okv is bool) && !(bool)okv;
@@ -226,6 +262,7 @@ namespace Icm
             {
                 line = line.Trim();
                 if (line.Length == 0) continue;
+                McpMeter.InChars += line.Length; McpMeter.Requests++;   // frontier's output to drive
                 Dictionary<string, object> msg;
                 try { msg = Json.AsObject(Json.Parse(line)); }
                 catch { continue; }
@@ -233,10 +270,14 @@ namespace Icm
                 Dictionary<string, object> resp = Handle(icm, disp, msg);
                 if (resp != null)
                 {
-                    Console.Out.WriteLine(Json.Serialize(resp));
+                    string outStr = Json.Serialize(resp);
+                    McpMeter.OutChars += outStr.Length;                 // frontier's input from results
+                    Console.Out.WriteLine(outStr);
                     Console.Out.Flush();
                 }
             }
+            // On shutdown (stdin closed), report the session's frontier I/O to stderr.
+            Console.Error.WriteLine("[icm mcp] " + McpMeter.Report().Replace("\n", "\n[icm mcp] "));
         }
     }
 }

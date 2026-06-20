@@ -95,7 +95,7 @@ through the in-memory load - SAC only changes HOW the bytes load, not the argume
 VSCode integrated terminal:
 
 ```
-setx PATH "%PATH%;C:\Users\curti\Documents\ollama_ICM_Code\win_icm_code"   # once, then reopen the terminal
+setx PATH "%PATH%;C:\path\to\ICM_Local_IDE"   # once (use your actual folder), then reopen the terminal
 ```
 
 Do NOT run `.\icm.exe` / `.\icm-gui.exe` directly (SAC will block them). The prebuilt exes are
@@ -105,6 +105,50 @@ targets it, not the GUI.
 
 Verify the deterministic core with no model: `.\icm.cmd selftest` (asserts the oracle, JSON, TSV,
 argv quoting, the path-escape guard, and path conventions).
+
+## Troubleshooting (download-and-run problems and fixes)
+
+Everything here is a real failure a fresh downloader can hit, with the fix. The deterministic core
+needs no model; only chat/generation/search need Ollama.
+
+- **"This app can't run on your PC" / the `.exe` is blocked, or it silently does nothing.** Smart App
+  Control / SmartScreen blocks the unsigned local `.exe`. **Fix:** never run `.\icm.exe` directly -
+  run the launcher `.\icm.cmd ...`, which loads the assembly bytes in-memory inside the already-trusted
+  `powershell.exe` (SAC only gates *how* the bytes load, not what they do). Same for the GUI via
+  `icm-gui.cmd`. Do NOT disable SAC.
+- **PowerShell won't run the launcher / "running scripts is disabled".** The launchers already pass
+  `-ExecutionPolicy Bypass`. If a `.ps1` you invoke directly is blocked, run it as
+  `powershell -ExecutionPolicy Bypass -File <script>.ps1`, or unblock a downloaded file with
+  `Unblock-File <path>`.
+- **`error: contacting Ollama ... (timeout?)` or generation hangs.** Ollama is not running or the
+  models are missing. **Fix:** install [Ollama](https://ollama.com), then `ollama pull qwen3-coder`
+  and `ollama pull nomic-embed-text`. Confirm `ollama list`. Override the endpoint with the `OLLAMA_URL`
+  env var or per-instance `ollama_url`. Verify the model-free core first with `.\icm.cmd selftest`.
+- **"no flow ..." / "project.json not found" / instance not found, run from the wrong folder.** Paths
+  are resolved against the **current working directory**. **Fix:** run from the repo root (so
+  `windows-icm` and `out\...` resolve), or pass an **absolute** instance path: `.\icm.cmd <abs-dir>`.
+  (Tools resolve `out\<project>` relative to the instance root, which the host sets correctly when you
+  go through the console; only ad-hoc direct script calls need the right CWD.)
+- **`csc.exe ... not found`.** The in-box .NET Framework C# compiler is missing (rare on Win10/11).
+  **Fix:** install/repair .NET Framework 4.x (the `build.ps1` / tool scripts probe both
+  `Framework64\v4.0.30319` and `Framework\v4.0.30319`).
+- **Generated code uses modern C# and won't compile.** The in-box compiler is **C# 5** - no string
+  interpolation, `?.`, expression-bodied members, tuples, switch patterns. This is expected: the
+  generate-verify-repair loop feeds the compiler error back and the model self-corrects, and the KB
+  conventions ground it. If you hand-edit, stay in the C# 5 subset (see `reference/csharp-*`).
+- **Edited `src/` but behavior didn't change.** The committed `icm.exe` is prebuilt. **Fix:** rebuild
+  with `powershell -ExecutionPolicy Bypass -File build.ps1`, then `.\icm.cmd selftest`.
+- **An MCP client sees no tools / garbled handshake.** Launch the server as `.\icm.cmd mcp <dir>` and
+  keep **stdout** for protocol only - all logs go to stderr. Verify with `powershell -File mcp-smoke.ps1`
+  (it defaults to the bundled instance). The project/edit flows are drivable over MCP because the flow
+  handler seeds all passed arguments.
+- **First chat is slow or routing seems to ignore the KB.** The embedding cache builds on first use
+  (needs the `embed` model). After adding KB files, run `.\icm.cmd reindex windows-icm` so the new
+  entries enter `manifest.json` and become routable.
+
+Quick green-light before trusting a fresh copy: `.\icm.cmd selftest` (core),
+`powershell -File project-smoke.ps1` (project tools), `powershell -File mcp-smoke.ps1` (MCP) - all
+model-free.
 
 ## Project structure (`src/`)
 

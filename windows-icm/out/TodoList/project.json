@@ -1,0 +1,31 @@
+﻿{
+    "name":  "TodoList",
+    "kind":  "console",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/TodoList.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "CLI todo app entry point using file-based storage."
+                  },
+                  {
+                      "path":  "src/Core/TodoItem.cs",
+                      "role":  "TodoItem represents core task entities with id, title, and completion status."
+                  },
+                  {
+                      "path":  "src/Drivers/ITodoStore.cs",
+                      "role":  "Defines the contract for todo item storage operations."
+                  },
+                  {
+                      "path":  "src/Drivers/FileTodoStore.cs",
+                      "role":  "File-based todo store persisting to todos.txt with CRUD operations."
+                  }
+              ]
+}

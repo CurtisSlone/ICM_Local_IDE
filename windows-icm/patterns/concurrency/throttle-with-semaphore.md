@@ -4,9 +4,9 @@
   "title": "Throttle concurrency with SemaphoreSlim (bound simultaneous work)",
   "doc_type": "pattern",
   "group": "concurrency",
-  "summary": "Cap how many operations run at once with SemaphoreSlim(maxConcurrent): await WaitAsync() before the work and Release() in a finally, so you bound simultaneous file/process/network calls.",
-  "keywords": ["SemaphoreSlim", "WaitAsync", "Release", "throttle", "concurrency limit", "bound concurrency", "rate limit", "max parallel", "finally", "Task.WhenAll"],
-  "source": { "origin": "authored", "note": "C# 5 / in-box .NET Framework 4.8; compiled with the in-box csc to verify" }
+  "summary": "Cap how many operations run at once with SemaphoreSlim(maxConcurrent): await WaitAsync() then Release() in a finally; includes a keyed one-gate-per-name variant and the acquire/release correctness rules (release only the slot you actually acquired - the classic timeout-then-release over-release bug).",
+  "keywords": ["SemaphoreSlim", "WaitAsync", "Release", "throttle", "concurrency limit", "bound concurrency", "rate limit", "max parallel", "finally", "Task.WhenAll", "keyed throttle", "named lock", "per-key", "ConcurrentDictionary", "SemaphoreFullException", "WaitAsync timeout", "concurrency rules"],
+  "source": { "origin": "authored", "note": "C# 5 / in-box .NET Framework 4.8; compiled with the in-box csc to verify. Keyed variant + rules adapted from a named-semaphore library (Ultranaco.Threading / SemaphoreLock), correcting its over-release and sync-Wait-in-async bugs." }
 }
 -->
 # Throttle concurrency with SemaphoreSlim
@@ -93,3 +93,74 @@ namespace Icm.Patterns.Concurrency
   cancellation pattern when waits should be abandonable. There is also a timeout overload.
 - **NOT available in-box:** nothing extra - `SemaphoreSlim` and its `WaitAsync` are in the in-box
   framework. (`Channel<T>`, an alternative way to bound a pipeline, is the absent NuGet-only API.)
+
+## Keyed throttle (one gate per name)
+
+Sometimes you do not want one global limit but an independent limit per resource - per file, per user,
+per host. Keep a `SemaphoreSlim` per key in a `ConcurrentDictionary`: calls with the same key contend;
+calls with different keys run freely.
+
+```csharp
+using System;
+using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Icm.Patterns.Concurrency
+{
+    // One independent gate per key. Same key contends; different keys are independent.
+    public static class KeyedThrottle
+    {
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _gates =
+            new ConcurrentDictionary<string, SemaphoreSlim>();
+
+        private static SemaphoreSlim GateFor(string key, int maxConcurrent)
+        {
+            return _gates.GetOrAdd(key, delegate(string k) { return new SemaphoreSlim(maxConcurrent, maxConcurrent); });
+        }
+
+        // No timeout: the wait always succeeds eventually, so releasing in finally is always correct.
+        public static async Task RunAsync(string key, int maxConcurrent, Func<Task> work)
+        {
+            SemaphoreSlim gate = GateFor(key, maxConcurrent);
+            await gate.WaitAsync().ConfigureAwait(false);
+            try { await work().ConfigureAwait(false); }
+            finally { gate.Release(); }
+        }
+
+        // With a timeout you might NOT get a slot. Capture the result and release ONLY if acquired.
+        public static async Task<bool> TryRunAsync(string key, int maxConcurrent, int timeoutMs, Func<Task> work)
+        {
+            SemaphoreSlim gate = GateFor(key, maxConcurrent);
+            bool acquired = await gate.WaitAsync(timeoutMs).ConfigureAwait(false);
+            if (!acquired) return false;          // did not acquire -> must NOT release
+            try { await work().ConfigureAwait(false); return true; }
+            finally { gate.Release(); }
+        }
+    }
+}
+```
+
+## Rules for use
+
+- **One acquire, one release - and release ONLY on the path that acquired.** The classic bug in
+  hand-rolled semaphore locks: call `Wait(timeout)` / `WaitAsync(timeout)`, ignore the returned
+  `bool`, and release anyway. If the wait timed out you never took a slot; releasing then pushes the
+  count above its maximum and throws `SemaphoreFullException` (or silently admits too many). Capture
+  the timeout result and release only when it is `true`.
+- **Release in `finally`** so an exception in the work cannot leak a slot (a leaked slot slowly starves
+  the gate to a deadlock).
+- **In async code use `WaitAsync`, never the blocking `Wait`.** Calling the synchronous `Wait` from an
+  async method ties up - and can deadlock - a thread-pool thread. A common mistake is an async wrapper
+  whose acquire path still calls the sync `Wait`.
+- **Rethrow with `throw;`, not `throw ex;`.** `throw ex;` resets the stack trace to the rethrow point
+  and hides where the error really came from.
+- **`SemaphoreSlim` is not reentrant.** The same logical operation acquiring twice can deadlock against
+  itself once the count is exhausted. One logical unit of work takes one slot.
+- **A per-key dictionary of semaphores grows unbounded** if keys are transient. Fine for a fixed, small
+  key set; otherwise evict idle gates or use a bounded cache.
+- **`using`/`Dispose` to release is safe ONLY when acquisition cannot fail** (no timeout). If the
+  acquire can time out, a `using` that always releases on dispose reintroduces the over-release bug.
+
+See also [[producer-consumer]] (bounding a pipeline another way), [[cancellation]] (abandonable waits),
+and the in-box concurrency primitives in [[concurrency-inbox]].

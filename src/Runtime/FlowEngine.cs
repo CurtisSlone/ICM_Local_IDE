@@ -28,8 +28,18 @@ namespace Icm
         // Run the flow over a seed request. Returns the final state blackboard.
         public Dictionary<string, object> Run(Flow flow, string request)
         {
+            var seed = new Dictionary<string, object>();
+            seed["request"] = request;
+            return Run(flow, seed);
+        }
+
+        // Seed several named inputs (from a command alias's declared `inputs`). "request" is always
+        // present so flows and prompt placeholders can rely on it.
+        public Dictionary<string, object> Run(Flow flow, Dictionary<string, object> seed)
+        {
             var state = new Dictionary<string, object>();
-            state["request"] = request;
+            if (seed != null) foreach (KeyValuePair<string, object> kv in seed) state[kv.Key] = kv.Value;
+            if (!state.ContainsKey("request")) state["request"] = "";
             foreach (FlowNode n in flow.Nodes)
             {
                 status("flow: " + n.Id + " (" + n.Kind + ")");

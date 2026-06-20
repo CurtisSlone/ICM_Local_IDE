@@ -1,0 +1,28 @@
+{
+  "name": "edit_file",
+  "description": "Surgically edit an existing file in a project: ground the model on the file's exact current contents plus the project and KB, apply ONE change (a refactor, an error fix, or a recommendation) while preserving everything else, rebuild the WHOLE project as the oracle, repair until it compiles, and log the edit.",
+  "whenToUse": "Refactor a function, fix an error, or apply a recommended change to an EXISTING file in a project (the user names the project and the file path). Edits that one file in place, rebuilds the whole project to verify, repairs until it compiles, and records the edit. Use add_file instead to create a new file.",
+  "nodes": [
+    { "id": "pick", "kind": "route_many", "inputs": ["request"], "outputs": ["entry_ids"], "maxK": 3 },
+    { "id": "kb",   "kind": "read",       "inputs": ["entry_ids"], "outputs": ["kb_context"] },
+    { "id": "current", "kind": "tool", "tool": "read_file",    "args": { "proj": "{proj}", "path": "{path}" }, "outputs": ["current"] },
+    { "id": "proj",    "kind": "tool", "tool": "read_project", "args": { "proj": "{proj}", "include": "default" }, "outputs": ["proj_context"] },
+
+    { "id": "build", "kind": "loop", "maxIterations": 5, "until": "ok", "outputs": ["code"],
+      "body": [
+        { "id": "edit", "kind": "generate", "outputs": ["code"],
+          "prompt": "You are making a SURGICAL edit to an existing C# source file in a project. Apply the requested change and change NOTHING ELSE.\n\nThe file to edit is {path}. Its CURRENT contents:\n--- CURRENT FILE ---\n{current}\n--- END ---\n\nProject context (other files, for consistency):\n--- PROJECT ---\n{proj_context}\n--- END ---\n\nRelevant reference material:\n--- REFERENCE ---\n{kb_context}\n--- END ---\n\nChange to make: {request}\n\nRules:\n- Apply ONLY the requested change. Preserve all other code, names, structure, comments and formatting exactly as they are.\n- If the change is a REFACTOR (restructuring for clarity, quality or performance), preserve the file's observable behavior and any public/external signatures unless the request explicitly says to change them.\n- If the change is a FIX for an error, make the MINIMAL change that resolves exactly that error.\n- It must compile under the in-box csc at langversion 5 as part of the whole project. If {path} is the entry file src\\Program.cs you must keep exactly one static int Main; for any other file do NOT add a Main.\nFORBIDDEN (will not compile under C# 5): string interpolation $\"...\", expression-bodied members =>, null-conditional ?., target-typed new, tuples, records, switch patterns / when-guards / switch expressions. Use string concatenation or string.Format and full method/property bodies. Ternary ?: is fine.\n\nIf the compiler reported errors on the previous attempt, fix EXACTLY those:\n{output}\n\nReturn the COMPLETE updated file - the whole file, NOT a diff and NOT a fragment - with no prose and no markdown fences." },
+        { "id": "stage", "kind": "tool", "tool": "stage_and_build",
+          "args": { "proj": "{proj}", "path": "{path}", "code": "{code}" }, "outputs": ["output"] }
+      ] },
+
+    { "id": "commit", "kind": "branch", "when": "ok", "test": "truthy",
+      "then": [
+        { "id": "summary", "kind": "generate", "outputs": ["summary"],
+          "prompt": "In ONE short line (max ~10 words, no trailing period), summarize the change just made to {path} for this request: {request}\n\nOutput only the line." },
+        { "id": "log", "kind": "tool", "tool": "log_edit",
+          "args": { "proj": "{proj}", "path": "{path}", "summary": "{summary}" }, "outputs": ["result"] }
+      ],
+      "else": [] }
+  ]
+}

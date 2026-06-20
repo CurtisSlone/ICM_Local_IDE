@@ -399,7 +399,8 @@ namespace Icm
             if (!string.IsNullOrEmpty(a.Flow))
             {
                 if (rest.Length == 0) { Usage(r, "/" + a.Name + " <input>"); return; }
-                RunNamedFlow(a.Flow, rest, r);
+                if (a.Inputs != null && a.Inputs.Count > 0) RunNamedFlow(a.Flow, SplitInputs(a.Inputs, rest), r);
+                else RunNamedFlow(a.Flow, rest, r);
             }
             else if (!string.IsNullOrEmpty(a.Tool))
             {
@@ -535,6 +536,35 @@ namespace Icm
             var engine = new FlowEngine(icm, this, status);
             Dictionary<string, object> state = engine.Run(flow, input);
             r.Text = FlowResult(flow, state);
+        }
+
+        // Seed a flow with several named inputs (a command alias declared `inputs`).
+        private void RunNamedFlow(string name, Dictionary<string, object> seed, TurnResult r)
+        {
+            Flow flow;
+            try { flow = Flow.Load(icm.FlowPath(name)); }
+            catch (IcmError e) { r.IsError = true; r.Text = "[error] no flow '" + name + "': " + e.Message; return; }
+            var engine = new FlowEngine(icm, this, status);
+            Dictionary<string, object> state = engine.Run(flow, seed);
+            r.Text = FlowResult(flow, state);
+        }
+
+        // Map a command line onto an alias's ordered input names: each of the first (n-1) names takes
+        // one whitespace-delimited token; the LAST name captures the remainder. Generic and
+        // domain-agnostic - the host never interprets what the slots mean. Public for SelfTest.
+        public static Dictionary<string, object> SplitInputs(List<string> names, string rest)
+        {
+            var d = new Dictionary<string, object>();
+            string remaining = (rest == null ? "" : rest).Trim();
+            int lead = names.Count - 1;
+            for (int i = 0; i < lead; i++)
+            {
+                string tok, more; SplitFirst(remaining, out tok, out more);
+                d[names[i]] = tok;
+                remaining = more;
+            }
+            d[names[names.Count - 1]] = remaining;
+            return d;
         }
 
         private static string FlowResult(Flow flow, Dictionary<string, object> state)

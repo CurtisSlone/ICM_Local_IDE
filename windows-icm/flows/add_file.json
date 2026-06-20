@@ -1,0 +1,30 @@
+{
+  "name": "add_file",
+  "description": "Add a new C# source file to an existing project: ground it in the KB and the project's own code, choose or honor a target path, generate, build the WHOLE project as the oracle, repair until green, then register the file in the project's on-disk memory (project.json + PROJECT.md).",
+  "whenToUse": "Add, create, or write a new file/class/driver/adapter/feature INTO an existing project (the user names a project). Generates the file, rebuilds the whole project, repairs until it compiles, and records it.",
+  "nodes": [
+    { "id": "pick", "kind": "route_many", "inputs": ["request"], "outputs": ["entry_ids"], "maxK": 3 },
+    { "id": "kb",   "kind": "read",       "inputs": ["entry_ids"], "outputs": ["kb_context"] },
+    { "id": "proj", "kind": "tool", "tool": "read_project", "args": { "proj": "{proj}", "include": "all" }, "outputs": ["proj_context"] },
+
+    { "id": "resolve_path", "kind": "generate", "outputs": ["path"],
+      "prompt": "You are choosing the target file path for a C# source file in an existing project.\n\nProject (layout, existing files and roles):\n--- PROJECT ---\n{proj_context}\n--- END ---\n\nTask: {request}\n\nRules:\n- If the task explicitly names a target path under src\\ (for example src\\Drivers\\Foo.cs), output THAT exact path.\n- If the task describes the WHOLE program / the app's overall behavior / the entry point (what the app does when run), output src\\Program.cs (this regenerates the entry point and wires things together).\n- Otherwise, for one focused piece: pure domain logic -> src\\Core\\<Name>.cs ; an I/O adapter/driver -> src\\Drivers\\<Name>.cs ; a WinForms window -> src\\Ui\\<Name>.cs. Pick a PascalCase <Name> from the task.\n- Use backslashes. The path MUST start with src\\ and end with .cs.\n\nOutput ONLY the path on a single line. No prose, no markdown." },
+
+    { "id": "build", "kind": "loop", "maxIterations": 5, "until": "ok", "outputs": ["code"],
+      "body": [
+        { "id": "gen", "kind": "generate", "outputs": ["code"],
+          "prompt": "Write ONE complete C# source file for an EXISTING project, to be saved at {path}. It must compile under the in-box csc at langversion 5 as part of the whole project.\n\nGround it in the project's existing code and conventions - reuse its namespaces and implement its interfaces/seams exactly:\n--- PROJECT ---\n{proj_context}\n--- END ---\n\nRelevant reference material (use these idioms):\n--- REFERENCE ---\n{kb_context}\n--- END ---\n\nTask: {request}\n\nRules:\n- Use the root namespace App with the sub-namespace matching the folder of {path} (App.Core, App.Drivers, App.Ui). The entry file src\\Program.cs stays in namespace App.\n- ENTRY POINT: if {path} IS the entry file (src\\Program.cs for a console app), you MUST include exactly one static int Main(string[] args) and WIRE IN the project's existing types (call its Core classes / use its Drivers). For any OTHER path, do NOT write a Main method - the project already has its entry point - and write only the single type the task asks for (no demo Main, no extra classes).\n- If the project defines an interface this file should implement (e.g. IOutput), implement it exactly.\nFORBIDDEN (will not compile under C# 5): string interpolation $\"...\", expression-bodied members =>, null-conditional ?., target-typed new, records, tuples. Use string concatenation or string.Format and full method/property bodies. (Ternary ?: is fine.)\n\nIf the compiler reported errors on the previous attempt, fix EXACTLY those:\n{output}\n\nReturn ONLY the complete C# file (no prose, no markdown fences)." },
+        { "id": "stage", "kind": "tool", "tool": "stage_and_build",
+          "args": { "proj": "{proj}", "path": "{path}", "code": "{code}" }, "outputs": ["output"] }
+      ] },
+
+    { "id": "commit", "kind": "branch", "when": "ok", "test": "truthy",
+      "then": [
+        { "id": "role", "kind": "generate", "outputs": ["role"],
+          "prompt": "In ONE short line (max ~10 words, no trailing period), describe the role of the file {path} you just wrote for this task: {request}\n\nOutput only the line." },
+        { "id": "register", "kind": "tool", "tool": "register_file",
+          "args": { "proj": "{proj}", "path": "{path}", "role": "{role}" }, "outputs": ["result"] }
+      ],
+      "else": [] }
+  ]
+}

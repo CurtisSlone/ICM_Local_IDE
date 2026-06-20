@@ -39,6 +39,8 @@ csc -nologo -noconfig -optimize+ -langversion:5 -target:exe ^
 
 ## Notes
 - `csc` treats `/` as an option prefix, so pass file paths with backslashes (or quote them).
-- It supports a one-level wildcard (`src\*.cs`) but not recursive globs; enumerate files for nested
-  folders.
+- It supports both a one-level wildcard (`src\*.cs`) and a **recursive** one
+  (`-recurse:src\*.cs`), which pulls in every nested `.cs` — so a folder tree needs no explicit file
+  list. For a multi-file project, drive this from a `response.rsp`; see [[project-layout]]. Note
+  `-noconfig` must stay on the command line (it is ignored inside an `.rsp`).
 - Exit code 0 = success; diagnostics print to stdout.

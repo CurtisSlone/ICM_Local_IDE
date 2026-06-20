@@ -1,0 +1,27 @@
+﻿{
+    "name":  "Expr",
+    "kind":  "console",
+    "created":  "2026-06-19",
+    "entry":  "src/Program.cs",
+    "out":  "dist/Expr.exe",
+    "rsp":  "response.rsp",
+    "assembly":  "single",
+    "references":  [
+                       "System.dll",
+                       "System.Core.dll"
+                   ],
+    "files":  [
+                  {
+                      "path":  "src/Program.cs",
+                      "role":  "src\\Program.cs evaluates command-line expressions and handles errors."
+                  },
+                  {
+                      "path":  "src/Core/Tokenizer.cs",
+                      "role":  "Tokenizer splits arithmetic expressions into numbers and operators."
+                  },
+                  {
+                      "path":  "src/Core/Evaluator.cs",
+                      "role":  "Evaluates arithmetic expressions with proper operator precedence and parentheses handling."
+                  }
+              ]
+}

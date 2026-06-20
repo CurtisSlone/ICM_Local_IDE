@@ -1,0 +1,10 @@
+/nologo
+/target:winexe
+/langversion:5
+/warn:4
+/reference:System.dll
+/reference:System.Core.dll
+/reference:System.Drawing.dll
+/reference:System.Windows.Forms.dll
+/out:dist\Paint.exe
+/recurse:src\*.cs

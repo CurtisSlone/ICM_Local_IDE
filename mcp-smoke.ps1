@@ -1,7 +1,8 @@
 # mcp-smoke.ps1 - drive the icm MCP server over stdio exactly as a client would, and assert the
 # JSON-RPC responses. Model-free (initialize / tools/list / catalog / read_entry / ping), so it runs
 # without Ollama. Usage: powershell -NoProfile -File mcp-smoke.ps1 [instanceDir]
-param([string] $Dir = "windows-icm")
+param([string] $Dir)
+if (-not $Dir) { $Dir = Join-Path $PSScriptRoot "windows-icm" }   # default relative to this script, not CWD
 
 # NOTE: do not set ErrorActionPreference=Stop here - the server writes a one-line banner to stderr at
 # startup, which PowerShell 5.1 wraps as a NativeCommandError; under Stop that would abort the run.
